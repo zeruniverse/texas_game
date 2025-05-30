@@ -36,7 +36,6 @@ const getPlayerStatus = (player: any, room: any) => {
 };
 
 const mappedPlayers = computed<PlayerInfo[]>(() => {
-  const room = { ...store }; // store包含必要字段
   return store.players.map((p: any) => ({
     id: p.id,
     nickname: p.nickname,

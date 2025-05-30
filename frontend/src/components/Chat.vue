@@ -14,7 +14,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, nextTick, onMounted, watch } from 'vue';
+import { ref, nextTick, watch } from 'vue';
 import { useMainStore } from '../store';
 
 const store = useMainStore();
