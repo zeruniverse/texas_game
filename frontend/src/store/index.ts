@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { io, Socket } from 'socket.io-client';
+import { SOCKET_URL } from '../config';
 
 interface RoomInfo {
   id: string;
@@ -32,11 +33,11 @@ export const useMainStore = defineStore('main', {
   }),
   actions: {
     initSocket() {
-      this.socket = io('http://localhost:3000');
+      this.socket = io(SOCKET_URL);
 
       // 连接建立后的处理
       this.socket.on('connect', () => {
-        console.log('Socket connected');
+        console.log('Socket connected to:', SOCKET_URL);
         // 注意：具体的房间加入逻辑现在由各个组件自己处理
         // 这里只做基础的连接状态管理
       });
