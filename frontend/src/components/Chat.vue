@@ -3,7 +3,7 @@
     <el-card ref="chatContainer" class="chat-messages">
       <div v-for="(msg, idx) in store.messages" :key="idx"
            :style="{ color: getMessageColor(msg.type) }">
-        {{ msg.message || msg }}
+        <span v-html="formatMessage(msg.message || msg)"></span>
       </div>
     </el-card>
     <div class="chat-input">
@@ -38,6 +38,24 @@ const getMessageColor = (type: string) => {
     return '#f56c6c'; // 红色
   }
   return undefined; // 默认颜色
+};
+
+// 格式化消息内容，处理扑克牌颜色
+const formatMessage = (message: string): string => {
+  if (!message) return '';
+  
+  // 匹配扑克牌格式：数字(包括10)/字母 + 花色符号
+  const cardRegex = /(10|[2-9JQKA])(♠|♥|♣|♦)/g;
+  
+  return message.replace(cardRegex, (match, value, suit) => {
+    let color = '';
+    if (suit === '♠' || suit === '♣') {
+      color = 'black';
+    } else if (suit === '♥' || suit === '♦') {
+      color = 'red';
+    }
+    return `<span style="color: ${color};">${value}${suit}</span>`;
+  });
 };
 
 // 监听 store.messages 变化，保持滚动到底部
@@ -89,6 +107,22 @@ function send() {
   .chat-messages {
     min-height: 300px;
     max-height: 400px; /* 移动设备上设置较小的最大高度 */
+  }
+  
+  /* 移动端输入框改为两行布局 */
+  .chat-input {
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 0;
+  }
+  
+  .chat-input .el-input {
+    margin-right: 0 !important;
+  }
+  
+  .chat-input .el-button {
+    align-self: stretch;
+    height: 40px;
   }
 }
 

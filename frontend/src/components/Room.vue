@@ -53,8 +53,14 @@
     <el-main class="game-main">
       <!-- 游戏信息展示 -->
       <el-card class="game-info">
-        <div>我的底牌: {{ !isInGame ? '未参与游戏' : online ? (store.hand.length > 0 ? store.hand.join(' ') : '-') : '线下发牌' }}</div>
-        <div>公共牌: {{ store.communityCards.join(' ') }}</div>
+        <div>我的底牌: <span v-if="!isInGame">未参与游戏</span>
+          <span v-else-if="online">
+            <span v-if="store.hand.length > 0" v-html="formatCards(store.hand)"></span>
+            <span v-else>-</span>
+          </span>
+          <span v-else>线下发牌</span>
+        </div>
+        <div>公共牌: <span v-html="formatCards(store.communityCards)"></span></div>
         <div>底池: {{ store.pot }}</div>
         <div>当前行动: {{ store.currentTurn === store.nickname ? '我' : store.currentTurn }}</div>
         <div>阶段: {{ roundText }}</div>
@@ -266,6 +272,23 @@ function onTakeAll() {
 // 计算 currentRoom 和 online 标识
 const currentRoomInfo = computed(() => store.rooms.find(r => r.id === roomId));
 const online = computed(() => currentRoomInfo.value?.online || false);
+
+function formatCards(cards: string[]): string {
+  return cards.map(card => {
+    // 使用正则表达式匹配扑克牌
+    const match = card.match(/(10|[2-9JQKA])(♠|♥|♣|♦)/);
+    if (!match) return card; // 如果不匹配，返回原始字符串
+    
+    const [, value, suit] = match;
+    let color = '';
+    if (suit === '♠' || suit === '♣') {
+      color = 'black';
+    } else if (suit === '♥' || suit === '♦') {
+      color = 'red';
+    }
+    return `<span style="color: ${color};">${value}${suit}</span>`;
+  }).join(' ');
+}
 </script>
 
 <style scoped>
@@ -412,6 +435,42 @@ const online = computed(() => currentRoomInfo.value?.online || false);
   .mobile-chat {
     width: 100%;
     min-height: 400px;
+  }
+  
+  /* 移动端调整主内容区域的padding-top */
+  .game-main {
+    padding-top: 60px; /* 适应缩小后的快捷按钮高度 */
+  }
+
+  /* 移动端快捷按钮优化 */
+  .floating-header {
+    padding: 4px 8px;
+    gap: 4px;
+    justify-content: flex-start;
+    align-items: center;
+    min-height: 50px;
+  }
+  
+  .floating-header .el-button {
+    font-size: 12px !important;
+    padding: 4px 8px !important;
+    height: auto !important;
+    min-height: 32px !important;
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  
+  /* 确保按钮不会太宽 */
+  .floating-header .el-button:not(.el-input-number) {
+    max-width: calc(25% - 4px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  /* 输入框特殊处理 */
+  .floating-header .el-input-number {
+    width: 80px !important;
+    flex: 0 0 80px;
   }
 }
 </style>
