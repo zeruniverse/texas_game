@@ -35,8 +35,7 @@
       </template>
       <!-- 线下分池阶段显示Take/TakeAll -->
       <template v-if="store.distributionActive && isInGame && !online">
-        <el-input-number v-model="takeAmount" :min="0" :max="store.pot"
-                         placeholder="Take 数量" style="margin-right:8px;" />
+        <el-input v-model.number="takeAmount" type="number" placeholder="Take 数量" style="width: 80px; margin-right:8px;" />
         <el-button type="primary" @click="onTake"
                    :disabled="takeAmount < 0"
                    :class="{ 'colored-border': takeAmount >= 0, 'disabled-border': takeAmount < 0 }">
@@ -73,8 +72,7 @@
           <PlayerList />
           <!-- 分池阶段 -->
           <template v-if="store.distributionActive && isInGame && !online">
-            <el-input-number v-model="takeAmount" :min="0" :max="store.pot"
-                             placeholder="Take 数量" style="margin:8px 0;" />
+            <el-input v-model.number="takeAmount" type="number" placeholder="Take 数量" style="width: 80px; margin:8px 0;" />
             <el-button type="primary" @click="onTake"
                        :disabled="takeAmount < 0"
                        :class="{ 'colored-border': takeAmount >= 0, 'disabled-border': takeAmount < 0 }"
@@ -111,8 +109,7 @@
           <PlayerList />
           <!-- 分池阶段 -->
           <template v-if="store.distributionActive && isInGame && !online">
-            <el-input-number v-model="takeAmount" :min="0" :max="store.pot"
-                             placeholder="Take 数量" style="margin:8px 0;" />
+            <el-input v-model.number="takeAmount" type="number" placeholder="Take 数量" style="width: 80px; margin:8px 0;" />
             <el-button type="primary" @click="onTake"
                        :disabled="takeAmount < 0"
                        :class="{ 'colored-border': takeAmount >= 0, 'disabled-border': takeAmount < 0 }"
@@ -205,6 +202,10 @@ function onCashIn() {
 function onCashOut() {
   if (confirm('确定要 Cash Out 并退出房间吗？')) {
     store.socket?.emit('cash_out', { roomId });
+    
+    // 清理所有状态
+    store.resetGameState();
+    
     // 清理本地存储
     localStorage.removeItem('texas_currentRoom');
     store.currentRoom = null;
@@ -259,7 +260,16 @@ function checkAction() {
 const takeAmount = ref(0);
 function onTake() {
   if (store.socket && store.currentRoom) {
-    store.socket.emit('take', { roomId, amount: takeAmount.value });
+    const val = Math.floor(takeAmount.value);
+    if (isNaN(val) || val <= 0) {
+      alert('请输入合法的正整数Take金额');
+      return;
+    }
+    if (val > store.pot) {
+      alert('Take金额不能超过奖池');
+      return;
+    }
+    store.socket.emit('take', { roomId, amount: val });
     takeAmount.value = 0;
   }
 }
@@ -468,7 +478,7 @@ function formatCards(cards: string[]): string {
   }
   
   /* 输入框特殊处理 */
-  .floating-header .el-input-number {
+  .floating-header .el-input {
     width: 80px !important;
     flex: 0 0 80px;
   }

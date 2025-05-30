@@ -58,12 +58,13 @@ export const useMainStore = defineStore('main', {
         this.distributionActive = false;
       });
       // 接收公共游戏状态
-      this.socket.on('game_state', (data: { communityCards: string[]; pot: number; bets: Record<string, number>; round: number; currentBet: number }) => {
+      this.socket.on('game_state', (data: { communityCards: string[]; pot: number; bets: Record<string, number>; round: number; currentBet: number; currentTurn: number }) => {
         this.communityCards = data.communityCards;
         this.pot = data.pot;
         this.bets = data.bets;
         this.round = data.round;
         this.currentBet = data.currentBet;
+        // currentTurn由action_request事件更新，这里不处理
       });
       // 请求玩家行动
       this.socket.on('action_request', (data: { playerId: string; seconds?: number }) => {
@@ -148,8 +149,11 @@ export const useMainStore = defineStore('main', {
     },
     joinRoom(roomId: string, nickname: string) {
       if (!this.socket) return;
-      // 切换房间时清空聊天记录
+      
+      // 切换房间时重置所有状态
       this.messages = [];
+      this.resetGameState();
+      
       const playerId = nickname; // 简化: 使用昵称作为 playerId
       this.currentRoom = roomId;
       this.nickname = nickname;
@@ -167,6 +171,28 @@ export const useMainStore = defineStore('main', {
     extendTime() {
       if (this.socket && this.currentRoom) {
         this.socket.emit('extend_time', { roomId: this.currentRoom });
+      }
+    },
+    resetGameState() {
+      // 重置所有游戏相关状态
+      this.hand = [];
+      this.communityCards = [];
+      this.pot = 0;
+      this.bets = {};
+      this.currentTurn = '';
+      this.players = [];
+      this.participants = [];
+      this.round = 0;
+      this.currentBet = 0;
+      this.timeLeft = 0;
+      this.gameActive = false;
+      this.autoStart = false;
+      this.distributionActive = false;
+      
+      // 清除定时器
+      if (this.timerId) {
+        clearInterval(this.timerId);
+        this.timerId = null;
       }
     }
   }

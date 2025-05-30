@@ -47,7 +47,7 @@ const formatMessage = (message: string): string => {
   // 匹配扑克牌格式：数字(包括10)/字母 + 花色符号
   const cardRegex = /(10|[2-9JQKA])(♠|♥|♣|♦)/g;
   
-  return message.replace(cardRegex, (match, value, suit) => {
+  return message.replace(cardRegex, (_, value, suit) => {
     let color = '';
     if (suit === '♠' || suit === '♣') {
       color = 'black';
