@@ -370,40 +370,6 @@ export function roomController(io: Server) {
 
         if (response.success) {
           socket.join(roomId);
-          
-          // 发送当前房间状态给新加入的玩家
-          const updatedRoom = response.data?.room || room;
-          socket.emit('room_update', updatedRoom);
-          
-          // 如果游戏正在进行中，同步游戏状态
-          if (updatedRoom.participants && updatedRoom.participants.length > 0) {
-            socket.emit('game_started', {});
-            // 请求最新的游戏状态
-            const gameStateResponse = await sendTaskToRoom(roomId, 'get_room_state', {});
-            if (gameStateResponse.success && gameStateResponse.data?.room?.gameState) {
-              const gs = gameStateResponse.data.room.gameState;
-              socket.emit('game_state', {
-                communityCards: gs.communityCards,
-                pot: gs.pot,
-                bets: gs.bets,
-                currentTurn: gs.currentTurn,
-                dealerIndex: gs.dealerIndex,
-                round: gs.round,
-                currentBet: gs.currentBet
-              });
-              
-              // 如果该玩家参与游戏并且是线上房间，发送手牌
-              if (updatedRoom.participants.includes(playerId) && gs.playerHands[playerId] && updatedRoom.online) {
-                socket.emit('deal_hand', { hand: gs.playerHands[playerId] });
-              }
-              
-              // 发送当前行动请求，同步当前轮到谁以及剩余时间
-              if (gs.currentTurn >= 0 && gs.currentTurn < updatedRoom.players.length) {
-                // 通过房间线程获取正确的剩余时间
-                await sendTaskToRoom(roomId, 'sync_action_request', { socketId: socket.id });
-              }
-            }
-          }
         } else {
           socket.emit('error', response.error || '加入房间失败');
         }
@@ -430,40 +396,6 @@ export function roomController(io: Server) {
 
         if (response.success) {
           socket.join(roomId);
-          
-          // 发送当前房间状态给重连的玩家
-          const updatedRoom = response.data?.room || room;
-          socket.emit('room_update', updatedRoom);
-          
-          // 如果游戏正在进行中，同步游戏状态
-          if (updatedRoom.participants && updatedRoom.participants.length > 0) {
-            socket.emit('game_started', {});
-            // 请求最新的游戏状态
-            const gameStateResponse = await sendTaskToRoom(roomId, 'get_room_state', {});
-            if (gameStateResponse.success && gameStateResponse.data?.room?.gameState) {
-              const gs = gameStateResponse.data.room.gameState;
-              socket.emit('game_state', {
-                communityCards: gs.communityCards,
-                pot: gs.pot,
-                bets: gs.bets,
-                currentTurn: gs.currentTurn,
-                dealerIndex: gs.dealerIndex,
-                round: gs.round,
-                currentBet: gs.currentBet
-              });
-              
-              // 如果该玩家参与游戏并且是线上房间，发送手牌
-              if (updatedRoom.participants.includes(playerId) && gs.playerHands[playerId] && updatedRoom.online) {
-                socket.emit('deal_hand', { hand: gs.playerHands[playerId] });
-              }
-              
-              // 发送当前行动请求，同步当前轮到谁以及剩余时间
-              if (gs.currentTurn >= 0 && gs.currentTurn < updatedRoom.players.length) {
-                // 通过房间线程获取正确的剩余时间
-                await sendTaskToRoom(roomId, 'sync_action_request', { socketId: socket.id });
-              }
-            }
-          }
         } else {
           socket.emit('kicked_out', { message: '会话过期，请重新进入房间' });
           socket.disconnect();

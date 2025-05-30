@@ -393,9 +393,6 @@ parentPort.on('message', (task: GameTask) => {
       case 'join_room':
         handleJoinRoom(task);
         break;
-      case 'leave_room':
-        handleLeaveRoom(task);
-        break;
       case 'cash_in':
         handleCashIn(task);
         break;
@@ -429,14 +426,8 @@ parentPort.on('message', (task: GameTask) => {
       case 'take_all':
         handleTakeAll(task);
         break;
-      case 'get_room_state':
-        handleGetRoomState(task);
-        break;
       case 'player_offline':
         handlePlayerOffline(task);
-        break;
-      case 'sync_action_request':
-        handleSyncActionRequest(task);
         break;
       default:
         sendResponse(task.id, false, null, `未知任务类型: ${task.type}`);
@@ -490,21 +481,6 @@ function handleJoinRoom(task: GameTask) {
   syncGameStateToPlayer(socketId, playerId);
   
   sendResponse(task.id, true, { room });
-}
-
-// 处理离开房间
-function handleLeaveRoom(task: GameTask) {
-  const { playerId } = task.data;
-  
-  const playerIndex = room.players.findIndex(p => p.id === playerId);
-  if (playerIndex !== -1) {
-    const player = room.players[playerIndex];
-    room.players.splice(playerIndex, 1);
-    emitToRoom('chat_broadcast', { message: `${player.nickname} 离开房间`, type: 'system' });
-    emitToRoom('room_update', room);
-  }
-  
-  sendResponse(task.id, true);
 }
 
 // 处理cash in
@@ -1206,10 +1182,6 @@ function handleTakeAll(task: GameTask) {
   sendResponse(task.id, true);
 }
 
-function handleGetRoomState(task: GameTask) {
-  sendResponse(task.id, true, { room });
-}
-
 function handlePlayerOffline(task: GameTask) {
   const { playerId, socketId } = task.data;
   
@@ -1224,42 +1196,6 @@ function handlePlayerOffline(task: GameTask) {
     // 更新房间状态但不立即移除玩家
     emitToRoom('room_update', room);
   }
-  
-  sendResponse(task.id, true);
-}
-
-function handleSyncActionRequest(task: GameTask) {
-  const { socketId } = task.data;
-  
-  if (!room.gameState || !room.participants || room.participants.length === 0) {
-    sendResponse(task.id, false, null, '游戏未开始，无法同步行动请求');
-    return;
-  }
-  
-  const gs = room.gameState;
-  
-  // 检查当前轮次是否有效
-  if (gs.currentTurn < 0 || gs.currentTurn >= room.players.length) {
-    sendResponse(task.id, false, null, '当前轮次无效');
-    return;
-  }
-  
-  const currentPlayer = room.players[gs.currentTurn];
-  if (!currentPlayer) {
-    sendResponse(task.id, false, null, '当前行动玩家不存在');
-    return;
-  }
-  
-  // 计算剩余时间
-  const remainingSeconds = (actionDeadline && actionDeadline > Date.now()) 
-    ? Math.ceil((actionDeadline - Date.now()) / 1000) 
-    : 0;
-  
-  // 发送当前行动请求状态
-  emitToPlayer(socketId, 'action_request', { 
-    playerId: currentPlayer.id, 
-    seconds: remainingSeconds
-  });
   
   sendResponse(task.id, true);
 }
