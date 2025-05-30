@@ -9,4 +9,5 @@ export interface Room {
   gameState: GameState;
   online: boolean;
   participants?: string[];
+  autoStart: boolean;
 }

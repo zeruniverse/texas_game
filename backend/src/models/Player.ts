@@ -5,4 +5,5 @@ export interface Player {
   socketId: string;
   lastHeartbeat: number;
   inGame: boolean;
+  cashinCount: number;
 }

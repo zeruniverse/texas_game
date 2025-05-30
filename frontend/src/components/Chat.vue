@@ -1,34 +1,52 @@
 <template>
-  <div>
-    <el-card style="height:80%; overflow:auto;">
-      <div v-for="(msg, idx) in messages" :key="idx">{{ msg }}</div>
+  <div class="chat-wrapper">
+    <el-card ref="chatContainer" class="chat-messages">
+      <div v-for="(msg, idx) in store.messages" :key="idx"
+           :style="{ color: getMessageColor(msg.type) }">
+        {{ msg.message || msg }}
+      </div>
     </el-card>
-    <el-input v-model="input" @keyup.enter="send" placeholder="输入消息" />
-    <el-button @click="send">发送</el-button>
+    <div class="chat-input">
+      <el-input v-model="input" @keyup.enter="send" placeholder="输入消息" style="flex:1; margin-right:8px;" />
+      <el-button type="primary" @click="send">发送</el-button>
+    </div>
   </div>
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted } from 'vue';
+import { ref, nextTick, onMounted, watch } from 'vue';
 import { useMainStore } from '../store';
 
-const messages = ref<string[]>([]);
-const input = ref('');
 const store = useMainStore();
+const input = ref('');
+const chatContainer = ref<HTMLElement>();
 
-onMounted(() => {
-  if (store.socket) {
-    store.socket.on('chat_broadcast', (data: { message: string }) => {
-      messages.value.push(data.message);
-    });
-    store.socket.on('error', (msg: string) => {
-      messages.value.push(`[系统] ${msg}`);
-    });
-    store.socket.on('game_over', () => {
-      messages.value.push('[系统] 游戏结束，请点击开始游戏开始新局');
-    });
+// 滚动到底部
+const scrollToBottom = () => {
+  nextTick(() => {
+    if (chatContainer.value) {
+      const element = chatContainer.value as any;
+      const scrollElement = element.$el || element;
+      scrollElement.scrollTop = scrollElement.scrollHeight;
+    }
+  });
+};
+
+// 获取消息颜色
+const getMessageColor = (type: string) => {
+  if (type === 'cashin' || type === 'cashout') {
+    return '#f56c6c'; // 红色
   }
-});
+  return undefined; // 默认颜色
+};
+
+// 监听 store.messages 变化，保持滚动到底部
+watch(
+  () => store.messages.length,
+  () => {
+    scrollToBottom();
+  }
+);
 
 function send() {
   if (store.socket && store.currentRoom && input.value) {
@@ -38,3 +56,46 @@ function send() {
   }
 }
 </script>
+
+<style scoped>
+.chat-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-height: 300px;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow: auto;
+  margin-bottom: 8px;
+  min-height: 250px;
+  max-height: 500px; /* 设置最大高度为500px */
+}
+
+.chat-input {
+  display: flex;
+  padding: 8px 0;
+  flex-shrink: 0;
+}
+
+/* 确保在移动设备上正确显示 */
+@media (max-width: 991px) {
+  .chat-wrapper {
+    min-height: 350px;
+  }
+
+  .chat-messages {
+    min-height: 300px;
+    max-height: 400px; /* 移动设备上设置较小的最大高度 */
+  }
+}
+
+/* 大屏幕优化 */
+@media (min-width: 1200px) {
+  .chat-messages {
+    max-height: 600px; /* 大屏幕上设置更大的最大高度 */
+  }
+}
+</style>

@@ -10,25 +10,37 @@ interface RoomInfo {
 
 export const useMainStore = defineStore('main', {
   state: () => ({
+    messages: [] as any[],
     socket: null as Socket | null,
     rooms: [] as RoomInfo[],
-    currentRoom: null as string | null,
-    nickname: '',
+    currentRoom: localStorage.getItem('texas_currentRoom') || null,
+    nickname: localStorage.getItem('texas_nickname') || '',
     hand: [] as string[],
     communityCards: [] as string[],
     pot: 0,
     bets: {} as Record<string, number>,
     currentTurn: '' as string,
     players: [] as any[],
+    participants: [] as string[],
     round: 0,
     currentBet: 0,
     timeLeft: 0,
     timerId: null as ReturnType<typeof setInterval> | null,
-    gameActive: false
+    gameActive: false,
+    autoStart: false,
+    distributionActive: false
   }),
   actions: {
     initSocket() {
       this.socket = io('http://localhost:3000');
+
+      // 连接建立后的处理
+      this.socket.on('connect', () => {
+        console.log('Socket connected');
+        // 注意：具体的房间加入逻辑现在由各个组件自己处理
+        // 这里只做基础的连接状态管理
+      });
+
       // 房间列表
       this.socket.on('room_list', (rooms: RoomInfo[]) => {
         this.rooms = rooms;
@@ -42,6 +54,8 @@ export const useMainStore = defineStore('main', {
         this.hand = data.hand;
         // 游戏开始
         this.gameActive = true;
+        // 新一局开始，重置分池阶段
+        this.distributionActive = false;
       });
       // 接收公共游戏状态
       this.socket.on('game_state', (data: { communityCards: string[]; pot: number; bets: Record<string, number>; round: number; currentBet: number }) => {
@@ -52,15 +66,25 @@ export const useMainStore = defineStore('main', {
         this.currentBet = data.currentBet;
       });
       // 请求玩家行动
-      this.socket.on('action_request', (data: { playerId: string; action?: string; amount?: number }) => {
+      this.socket.on('action_request', (data: { playerId: string; seconds?: number }) => {
         this.currentTurn = data.playerId;
-        // 重置并开始倒计时
-        this.timeLeft = 30;
+        // 设置并开始倒计时（秒）
+        this.timeLeft = data.seconds ?? 30;
         this.startTimer();
       });
       // 游戏启动
       this.socket.on('game_started', () => {
         this.gameActive = true;
+        this.distributionActive = false;
+      });
+      // 分奖池阶段
+      this.socket.on('distribution_start', () => {
+        this.timeLeft = 0;
+        if (this.timerId) {
+          clearInterval(this.timerId);
+          this.timerId = null;
+        }
+        this.distributionActive = true;
       });
       // 游戏结束
       this.socket.on('game_over', () => {
@@ -70,34 +94,68 @@ export const useMainStore = defineStore('main', {
           clearInterval(this.timerId);
           this.timerId = null;
         }
+        this.distributionActive = false;
+      });
+      // 聊天广播
+      this.socket.on('chat_broadcast', (data: any) => {
+        this.messages.push(data);
+      });
+      // 错误消息
+      this.socket.on('error', (msg: string) => {
+        this.messages.push({ message: `[系统] ${msg}` });
+      });
+      // 系统提示游戏结束
+      this.socket.on('game_over', () => {
+        this.messages.push({ message: '[系统] 游戏结束，请点击开始游戏开始新局' });
       });
       // 房间更新
       this.socket.on('room_update', (room: any) => {
         this.players = room.players;
-      });
-      // 监听时间更新，同步延时
-      this.socket.on('time_update', (data: { seconds: number }) => {
-        this.timeLeft += data.seconds;
-      });
-      // 监听分奖池阶段，停止倒计时
-      this.socket.on('distribution_start', () => {
-        this.timeLeft = 0;
-        if (this.timerId) {
-          clearInterval(this.timerId);
-          this.timerId = null;
+        // 同步游戏参与者列表
+        this.participants = room.participants || [];
+        // 同步房间的自动开始状态
+        if (room.autoStart !== undefined) {
+          this.autoStart = room.autoStart;
         }
+      });
+      // 监听时间更新，设置剩余时间
+      this.socket.on('time_update', (data: { seconds: number }) => {
+        this.timeLeft = data.seconds;
+      });
+      // 监听被踢出事件
+      this.socket.on('kicked_out', (data: { message: string }) => {
+        alert(data.message);
+        // 清理本地存储
+        localStorage.removeItem('texas_currentRoom');
+        localStorage.removeItem('texas_nickname');
+        // 清理store状态
+        this.currentRoom = null;
+        this.nickname = '';
+        this.participants = [];
+        this.players = [];
+        this.gameActive = false;
+        this.distributionActive = false;
+        // 断开socket连接避免重连
+        if (this.socket) {
+          this.socket.disconnect();
+          this.socket = null;
+        }
+        // 跳转到房间列表
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 100);
       });
     },
     joinRoom(roomId: string, nickname: string) {
       if (!this.socket) return;
+      // 切换房间时清空聊天记录
+      this.messages = [];
       const playerId = nickname; // 简化: 使用昵称作为 playerId
       this.currentRoom = roomId;
       this.nickname = nickname;
+      localStorage.setItem('texas_nickname', nickname); // 保存昵称到localStorage
+      localStorage.setItem('texas_currentRoom', roomId); // 保存当前房间到localStorage
       this.socket.emit('join_room', { roomId, playerId, nickname });
-      this.socket.on('room_update', (room) => {
-        // 处理 room 更新，后续补充逻辑
-        console.log('room_update', room);
-      });
     },
     startTimer() {
       if (this.timerId) clearInterval(this.timerId);
