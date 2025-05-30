@@ -106,6 +106,13 @@ export function roomController(io: Server) {
     io.to(room.id).emit('game_state', { communityCards: gs.communityCards, pot: gs.pot, bets: gs.bets, currentTurn: gs.currentTurn, dealerIndex: gs.dealerIndex, round: gs.round, currentBet: gs.currentBet });
     // 请求第一个玩家行动
     io.to(room.id).emit('action_request', { playerId: nextPlayer.id, seconds: 30 });
+    // 清除已有定时器
+    const existingTimer = actionTimers.get(room.id);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      actionTimers.delete(room.id);
+    }
+    actionDeadlines.delete(room.id);
     // 记录倒计时截止时间并启动超时定时器
     const deadline = Date.now() + 30000;
     actionDeadlines.set(room.id, deadline);
@@ -353,6 +360,11 @@ export function roomController(io: Server) {
     socket.on('start_game', ({ roomId }) => {
       const room = rooms.find(r => r.id === roomId);
       if (!room) return;
+      // 如果游戏已开始，则忽略重复请求
+      if (room.participants && room.participants.length > 0) {
+        socket.emit('error', '游戏已在进行中');
+        return;
+      }
       // 锁定潜在参与者：筹码>0 且在线
       const participants = room.players.filter(p => p.chips > 0 && p.inGame).map(p => p.id);
       if (participants.length < 2) {
@@ -578,7 +590,8 @@ export function roomController(io: Server) {
           if (room.online) {
             // 摊牌：侧池与主池分配
             const inPlayers = room.participants!.filter(id => !gs.folded.includes(id));
-
+            // 展示公共牌信息
+            io.to(roomId).emit('chat_broadcast', { message: `公共牌: ${gs.communityCards.join(' ')}` });
             // 展示所有未fold玩家的底牌
             io.to(roomId).emit('chat_broadcast', { message: '摊牌阶段，揭示底牌:' });
             inPlayers.forEach(id => {
@@ -672,7 +685,8 @@ export function roomController(io: Server) {
           }
           // 摊牌：侧池与主池分配
           const inPlayers = room.participants!.filter(id => !gs.folded.includes(id));
-
+          // 展示公共牌信息
+          io.to(roomId).emit('chat_broadcast', { message: `公共牌: ${gs.communityCards.join(' ')}` });
           // 展示所有未fold玩家的底牌
           io.to(roomId).emit('chat_broadcast', { message: '摊牌阶段，揭示底牌:' });
           inPlayers.forEach(id => {
@@ -824,6 +838,8 @@ export function roomController(io: Server) {
       socket.join(roomId);
       // 广播房间更新
       io.to(roomId).emit('room_update', room);
+      // 清除游戏状态缓存
+      socket.emit('game_state', { communityCards: [], pot: 0, bets: {}, currentTurn: 0, dealerIndex: 0, round: 0, currentBet: 0 });
     });
 
     // 断线重连或刷新页面的重建会话
