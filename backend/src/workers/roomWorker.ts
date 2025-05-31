@@ -264,6 +264,30 @@ function continueToNextPlayer() {
   const participatingPlayers = room.players.filter(p => room.participants!.includes(p.id));
   const currentPlayerInParticipants = participatingPlayers.findIndex(p => p.id === room.players[gs.currentTurn].id);
   
+  // 如果所有活跃玩家都已行动且投注一致，则进入下一阶段
+  {
+    const activeIds = room.participants!.filter(id => !gs.folded.includes(id));
+    const activePlayers = activeIds.map(id => room.players.find(p => p.id === id)!);
+    let allActed = true;
+    let allBetsEqual = true;
+    for (const player of activePlayers) {
+      if (!gs.acted.includes(player.id)) {
+        allActed = false;
+        break;
+      }
+      const playerBet = gs.bets[player.id] || 0;
+      if (player.chips > 0 && playerBet !== gs.currentBet) {
+        allBetsEqual = false;
+        break;
+      }
+    }
+    if (allActed && allBetsEqual) {
+      // 回合结束，进入下一阶段
+      nextRound();
+      return;
+    }
+  }
+  
   // 寻找下一个可以行动的玩家
   let nextParticipantIdx = (currentPlayerInParticipants + 1) % participatingPlayers.length;
   let attempts = 0;
