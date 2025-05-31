@@ -7,7 +7,7 @@ const config = {
   // 生产环境配置
   production: {
     // 在静态部署时，可以通过环境变量或这里直接配置后端地址
-    socketUrl: import.meta.env.VITE_SOCKET_URL || 'wss://your-backend-domain.com'
+    socketUrl: import.meta.env.VITE_SOCKET_URL || 'http://localhost:3000'
   }
 };
 

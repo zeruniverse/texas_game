@@ -72,30 +72,38 @@
           <PlayerList />
           <!-- 分池阶段 -->
           <template v-if="store.distributionActive && isInGame && !online">
-            <el-input v-model.number="takeAmount" type="number" placeholder="Take 数量" style="width: 80px; margin:8px 0;" />
-            <el-button type="primary" @click="onTake"
-                       :disabled="takeAmount < 0"
-                       :class="{ 'colored-border': takeAmount >= 0, 'disabled-border': takeAmount < 0 }"
-                       style="margin-bottom:8px;">
-              Take
-            </el-button>
-            <el-button type="warning" @click="onTakeAll"
-                       :disabled="store.pot === 0"
-                       :class="{ 'colored-border': store.pot > 0, 'disabled-border': store.pot === 0 }"
-                       style="margin-bottom:8px;">
-              Take All
-            </el-button>
+            <div class="take-controls">
+              <el-input v-model.number="takeAmount" type="number" placeholder="Take 数量" class="take-input" />
+              <el-button type="primary" @click="onTake"
+                         :disabled="takeAmount < 0"
+                         :class="{ 'colored-border': takeAmount >= 0, 'disabled-border': takeAmount < 0 }"
+                         class="take-btn">
+                Take
+              </el-button>
+              <el-button type="warning" @click="onTakeAll"
+                         :disabled="store.pot === 0"
+                         :class="{ 'colored-border': store.pot > 0, 'disabled-border': store.pot === 0 }"
+                         class="take-btn">
+                Take All
+              </el-button>
+            </div>
           </template>
           <!-- 正常操作阶段 -->
           <template v-else-if="store.gameActive && isInGame && !store.distributionActive">
             <ActionBar style="position:relative; z-index:100;" />
           </template>
-          <el-button size="small" @click="toggleAutoStart"
-                     :type="store.autoStart ? 'warning' : 'info'"
-                     style="align-self:flex-start; position:relative; z-index:100;"
-                     :class="{ 'colored-border': true }">
-            {{ store.autoStart ? '关闭自动开始' : '开启自动开始' }}
-          </el-button>
+          <div class="control-buttons">
+            <el-button size="small" @click="toggleAutoStart"
+                       :type="store.autoStart ? 'warning' : 'info'"
+                       :class="{ 'colored-border': true }">
+              {{ store.autoStart ? '关闭自动开始' : '开启自动开始' }}
+            </el-button>
+            <el-button size="small" @click="toggleRoomLock"
+                       :type="store.roomLocked ? 'danger' : 'success'"
+                       :class="{ 'colored-border': true }">
+              {{ store.roomLocked ? '解锁房间' : '锁定房间' }}
+            </el-button>
+          </div>
         </div>
         <div class="chat-container">
           <Chat class="chat-component" />
@@ -109,29 +117,38 @@
           <PlayerList />
           <!-- 分池阶段 -->
           <template v-if="store.distributionActive && isInGame && !online">
-            <el-input v-model.number="takeAmount" type="number" placeholder="Take 数量" style="width: 80px; margin:8px 0;" />
-            <el-button type="primary" @click="onTake"
-                       :disabled="takeAmount < 0"
-                       :class="{ 'colored-border': takeAmount >= 0, 'disabled-border': takeAmount < 0 }"
-                       style="margin-bottom:8px;">
-              Take
-            </el-button>
-            <el-button type="warning" @click="onTakeAll"
-                       :disabled="store.pot === 0"
-                       :class="{ 'colored-border': store.pot > 0, 'disabled-border': store.pot === 0 }"
-                       style="margin-bottom:8px;">
-              Take All
-            </el-button>
+            <div class="take-controls-mobile">
+              <el-input v-model.number="takeAmount" type="number" placeholder="Take 数量" class="take-input-mobile" />
+              <el-button type="primary" @click="onTake"
+                         :disabled="takeAmount < 0"
+                         :class="{ 'colored-border': takeAmount >= 0, 'disabled-border': takeAmount < 0 }"
+                         class="take-btn-mobile">
+                Take
+              </el-button>
+              <el-button type="warning" @click="onTakeAll"
+                         :disabled="store.pot === 0"
+                         :class="{ 'colored-border': store.pot > 0, 'disabled-border': store.pot === 0 }"
+                         class="take-btn-mobile">
+                Take All
+              </el-button>
+            </div>
           </template>
           <!-- 正常操作阶段 -->
           <template v-else-if="store.gameActive && isInGame && !store.distributionActive">
             <ActionBar />
           </template>
-          <el-button size="small" @click="toggleAutoStart"
-                     :type="store.autoStart ? 'warning' : 'info'"
-                     :class="{ 'colored-border': true }">
-            {{ store.autoStart ? '关闭自动开始' : '开启自动开始' }}
-          </el-button>
+          <div class="control-buttons-mobile">
+            <el-button size="small" @click="toggleAutoStart"
+                       :type="store.autoStart ? 'warning' : 'info'"
+                       :class="{ 'colored-border': true }">
+              {{ store.autoStart ? '关闭自动开始' : '开启自动开始' }}
+            </el-button>
+            <el-button size="small" @click="toggleRoomLock"
+                       :type="store.roomLocked ? 'danger' : 'success'"
+                       :class="{ 'colored-border': true }">
+              {{ store.roomLocked ? '解锁房间' : '锁定房间' }}
+            </el-button>
+          </div>
         </div>
 
         <!-- 聊天窗口 -->
@@ -144,7 +161,7 @@
 </template>
 
 <script lang="ts" setup>
-import { onMounted, computed, ref } from 'vue';
+import { onMounted, computed, ref, onUnmounted } from 'vue';
 import { useMainStore } from '../store';
 import { storeToRefs } from 'pinia';
 import { useRouter, useRoute } from 'vue-router';
@@ -163,8 +180,8 @@ const roundText = computed(() => ['翻前','翻后','转牌','河牌'][round.val
 
 // 如果未加入此房间，则尝试重新加入
 onMounted(() => {
-  // 确保socket已初始化
-  if (!store.socket) {
+  // 确保socket已初始化，但如果已存在且连接正常，则不重新初始化
+  if (!store.socket || !store.socket.connected) {
     store.initSocket();
   }
 
@@ -172,6 +189,15 @@ onMounted(() => {
     // 设置当前房间ID
     store.currentRoom = roomId;
     localStorage.setItem('texas_currentRoom', roomId);
+
+    // 检查是否是从大厅新加入的（通过URL参数或状态判断）
+    // 如果是刚从大厅join_room过来的，就不需要reconnect_room了
+    const isNewJoin = sessionStorage.getItem('texas_newJoin') === 'true';
+    if (isNewJoin) {
+      // 清除标记，避免下次页面加载时误判
+      sessionStorage.removeItem('texas_newJoin');
+      return;
+    }
 
     // 如果socket已连接，直接重建会话；否则等待connect事件
     if (store.socket && store.socket.connected) {
@@ -186,12 +212,12 @@ onMounted(() => {
   } else {
     router.push({ name: 'Lobby' });
   }
+});
 
-  if (store.socket) {
-    store.socket.on('deal_hand', (data: { hand: string[] }) => {
-      store.hand = data.hand;
-    });
-  }
+// 添加组件卸载时的清理
+onUnmounted(() => {
+  // 组件卸载时不断开socket连接，因为用户可能只是切换到大厅页面
+  // socket连接的管理交给store统一处理
 });
 
 function onCashIn() {
@@ -213,8 +239,8 @@ function onCashOut() {
   }
 }
 function onStartGame() {
-  if (confirm('确定要开始游戏吗？')) {
-    store.socket?.emit('start_game', { roomId });
+  if (store.socket && store.currentRoom) {
+    store.socket.emit('start_game', { roomId: store.currentRoom });
   }
 }
 
@@ -222,6 +248,13 @@ function onStartGame() {
 function toggleAutoStart() {
   if (store.socket && store.currentRoom) {
     store.socket.emit('toggle_auto_start', { roomId: store.currentRoom });
+  }
+}
+
+// 切换房间锁定
+function toggleRoomLock() {
+  if (store.socket && store.currentRoom) {
+    store.socket.emit('toggle_room_lock', { roomId: store.currentRoom });
   }
 }
 
@@ -378,6 +411,29 @@ function formatCards(cards: string[]): string {
   width: 100%;
 }
 
+/* Take控件大屏幕样式 */
+.take-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.take-input {
+  width: 120px;
+}
+
+.take-btn {
+  flex: 0 0 auto;
+}
+
+/* 控制按钮大屏幕样式 */
+.control-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 /* 移动布局 */
 .mobile-layout {
   display: none;
@@ -482,5 +538,33 @@ function formatCards(cards: string[]): string {
     width: 80px !important;
     flex: 0 0 80px;
   }
+}
+
+/* Take控件移动端样式 */
+.take-controls-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.take-input-mobile {
+  width: 100%;
+}
+
+.take-btn-mobile {
+  width: 100%;
+}
+
+/* 控制按钮移动端样式 */
+.control-buttons-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.control-buttons-mobile .el-button {
+  width: 100%;
 }
 </style>

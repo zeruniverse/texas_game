@@ -10,6 +10,7 @@ export interface Room {
   online: boolean;
   participants?: string[];
   autoStart: boolean;
+  locked: boolean;
   threadId?: string;
   lastActiveTime: number;
   threadStatus: 'idle' | 'running' | 'stopping';

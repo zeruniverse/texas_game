@@ -59,7 +59,7 @@ function emitToPlayer(socketId: string, event: string, data: any) {
 function syncGameStateToPlayer(socketId: string, playerId: string) {
   // 先发送房间更新，确保前端有正确的players列表
   emitToPlayer(socketId, 'room_update', room);
-
+  
   // 如果游戏未开始，不需要同步
   if (!room.gameState || !room.participants || room.participants.length === 0) {
     return;
@@ -420,6 +420,9 @@ parentPort.on('message', (task: GameTask) => {
       case 'toggle_auto_start':
         handleToggleAutoStart(task);
         break;
+      case 'toggle_room_lock':
+        handleToggleRoomLock(task);
+        break;
       case 'take':
         handleTake(task);
         break;
@@ -445,12 +448,25 @@ function handleJoinRoom(task: GameTask) {
   // 检查是否已存在
   const existingPlayer = room.players.find(p => p.id === playerId);
   if (existingPlayer) {
+    // 记录玩家之前是否离线
+    const wasOffline = !existingPlayer.inGame;
+    
     // 更新连接信息
     existingPlayer.socketId = socketId;
     existingPlayer.lastHeartbeat = Date.now();
     existingPlayer.inGame = true;
-    emitToRoom('chat_broadcast', { message: `${existingPlayer.nickname} 重新上线`, type: 'system' });
+    
+    // 只有当玩家确实是离线后重新上线时才显示重连消息
+    if (wasOffline) {
+      emitToRoom('chat_broadcast', { message: `${existingPlayer.nickname} 重新上线`, type: 'system' });
+    }
   } else {
+    // 检查房间是否锁定
+    if (room.locked) {
+      sendResponse(task.id, false, null, '房间已锁定，无法加入');
+      return;
+    }
+    
     // 检查房间是否已满
     if (room.players.length >= room.maxPlayers) {
       sendResponse(task.id, false, null, '房间已满');
@@ -531,7 +547,7 @@ function handleStartGame(task: GameTask) {
   
   const participants = room.players.filter(p => p.chips > 0 && p.inGame).map(p => p.id);
   if (participants.length < 2) {
-    sendResponse(task.id, false, null, '至少需要2名玩家才能开始游戏');
+    sendResponse(task.id, false, null, '至少需要2名有筹码的玩家才能开始游戏');
     return;
   }
   
@@ -1015,7 +1031,12 @@ function handleReconnect(task: GameTask) {
   
   const player = room.players.find(p => p.id === playerId);
   if (!player) {
-    sendResponse(task.id, false, null, '玩家不存在或会话已过期');
+    // 检查是否是因为房间锁定而无法重连
+    if (room.locked) {
+      sendResponse(task.id, false, null, '房间已锁定，无法重新连接');
+    } else {
+      sendResponse(task.id, false, null, '玩家不存在或会话已过期');
+    }
     return;
   }
   
@@ -1091,6 +1112,24 @@ function handleToggleAutoStart(task: GameTask) {
   const status = room.autoStart ? '开启' : '关闭';
   
   emitToRoom('chat_broadcast', { message: `[玩家${player.nickname} ${status}了自动开始游戏]`, type: 'system' });
+  emitToRoom('room_update', room);
+  
+  sendResponse(task.id, true);
+}
+
+function handleToggleRoomLock(task: GameTask) {
+  const { playerId } = task.data;
+  const player = room.players.find(p => p.id === playerId);
+  
+  if (!player) {
+    sendResponse(task.id, false, null, '玩家不存在');
+    return;
+  }
+  
+  room.locked = !room.locked;
+  const status = room.locked ? '锁定' : '解锁';
+  
+  emitToRoom('chat_broadcast', { message: `[玩家${player.nickname} ${status}了房间]`, type: 'system' });
   emitToRoom('room_update', room);
   
   sendResponse(task.id, true);

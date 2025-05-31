@@ -17,6 +17,7 @@ export function roomController(io: Server) {
       players: [],
       online: i > 6,
       autoStart: false,
+      locked: false,
       lastActiveTime: Date.now(),
       threadStatus: 'idle',
       gameState: { 
@@ -58,7 +59,8 @@ export function roomController(io: Server) {
             id: room.id,
             name: room.name,
             current: room.players.length,
-            online: room.online
+            online: room.online,
+            locked: room.locked
           }));
           io.emit('room_list', roomsInfo);
         }
@@ -99,7 +101,8 @@ export function roomController(io: Server) {
       id: room.id,
       name: room.name,
       current: room.players.length,
-      online: room.online
+      online: room.online,
+      locked: room.locked
     }));
     socket.emit('room_list', roomsInfo);
 
@@ -239,6 +242,27 @@ export function roomController(io: Server) {
       }
     });
 
+    // 切换房间锁定状态 - 转发到房间线程
+    socket.on('toggle_room_lock', async ({ roomId }) => {
+      const room = rooms.find(r => r.id === roomId);
+      if (!room) {
+        socket.emit('error', '房间不存在');
+        return;
+      }
+      
+      const player = room.players.find(p => p.socketId === socket.id);
+      if (!player) {
+        socket.emit('error', '玩家不存在');
+        return;
+      }
+
+      try {
+        await sendTaskToRoom(roomId, 'toggle_room_lock', { playerId: player.id }, socket.id, player.id);
+      } catch (error) {
+        socket.emit('error', '切换房间锁定状态失败');
+      }
+    });
+
     // 客户端请求开始游戏 - 转发到房间线程
     socket.on('start_game', async ({ roomId }) => {
       const room = rooms.find(r => r.id === roomId);
@@ -358,7 +382,8 @@ export function roomController(io: Server) {
     socket.on('join_room', async ({ roomId, playerId, nickname }) => {
       const room = rooms.find(r => r.id === roomId);
       if (!room) {
-        socket.emit('error', '房间不存在');
+        socket.emit('kicked_out', { message: '房间不存在' });
+        socket.disconnect();
         return;
       }
 
@@ -372,10 +397,13 @@ export function roomController(io: Server) {
         if (response.success) {
           socket.join(roomId);
         } else {
-          socket.emit('error', response.error || '加入房间失败');
+          // 房间锁定或房间已满等错误应该强制用户返回大厅
+          socket.emit('kicked_out', { message: response.error || '加入房间失败' });
+          socket.disconnect();
         }
       } catch (error) {
-        socket.emit('error', '加入房间失败');
+        socket.emit('kicked_out', { message: '加入房间失败' });
+        socket.disconnect();
       }
     });
 
@@ -383,7 +411,7 @@ export function roomController(io: Server) {
     socket.on('reconnect_room', async ({ roomId, playerId, nickname }) => {
       const room = rooms.find(r => r.id === roomId);
       if (!room) {
-        socket.emit('error', '房间不存在');
+        socket.emit('kicked_out', { message: '房间不存在' });
         socket.disconnect();
         return;
       }
@@ -398,7 +426,8 @@ export function roomController(io: Server) {
         if (response.success) {
           socket.join(roomId);
         } else {
-          socket.emit('kicked_out', { message: '会话过期，请重新进入房间' });
+          // 使用后端返回的具体错误信息
+          socket.emit('kicked_out', { message: response.error || '重连失败' });
           socket.disconnect();
         }
       } catch (error) {

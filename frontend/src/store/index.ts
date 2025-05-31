@@ -7,6 +7,7 @@ interface RoomInfo {
   name: string;
   current: number;
   online: boolean;
+  locked?: boolean;
 }
 
 export const useMainStore = defineStore('main', {
@@ -27,12 +28,30 @@ export const useMainStore = defineStore('main', {
     currentBet: 0,
     timeLeft: 0,
     timerId: null as ReturnType<typeof setInterval> | null,
+    heartbeatInterval: null as ReturnType<typeof setInterval> | null,
     gameActive: false,
     autoStart: false,
-    distributionActive: false
+    distributionActive: false,
+    roomLocked: false
   }),
   actions: {
     initSocket() {
+      // 如果已有socket连接，先断开
+      if (this.socket) {
+        console.log('断开现有socket连接');
+        this.socket.removeAllListeners();
+        this.socket.disconnect();
+        this.socket = null;
+      }
+
+      // 清除之前的心跳定时器
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval);
+        this.heartbeatInterval = null;
+      }
+
+      // 创建新的socket连接
+      console.log('创建新的socket连接到:', SOCKET_URL);
       this.socket = io(SOCKET_URL);
 
       // 连接建立后的处理
@@ -46,8 +65,9 @@ export const useMainStore = defineStore('main', {
       this.socket.on('room_list', (rooms: RoomInfo[]) => {
         this.rooms = rooms;
       });
-      // 心跳保持在线
-      setInterval(() => {
+      
+      // 心跳保持在线 - 使用管理的定时器
+      this.heartbeatInterval = setInterval(() => {
         this.socket?.emit('heartbeat');
       }, 5000);
       // 接收手牌
@@ -97,6 +117,8 @@ export const useMainStore = defineStore('main', {
           this.timerId = null;
         }
         this.distributionActive = false;
+        // 同时添加系统提示消息
+        this.messages.push({ message: '[系统] 游戏结束，请点击开始游戏开始新局' });
       });
       // 聊天广播
       this.socket.on('chat_broadcast', (data: any) => {
@@ -106,10 +128,6 @@ export const useMainStore = defineStore('main', {
       this.socket.on('error', (msg: string) => {
         this.messages.push({ message: `[系统] ${msg}` });
       });
-      // 系统提示游戏结束
-      this.socket.on('game_over', () => {
-        this.messages.push({ message: '[系统] 游戏结束，请点击开始游戏开始新局' });
-      });
       // 房间更新
       this.socket.on('room_update', (room: any) => {
         this.players = room.players;
@@ -118,6 +136,10 @@ export const useMainStore = defineStore('main', {
         // 同步房间的自动开始状态
         if (room.autoStart !== undefined) {
           this.autoStart = room.autoStart;
+        }
+        // 同步房间锁定状态
+        if (room.locked !== undefined) {
+          this.roomLocked = room.locked;
         }
       });
       // 监听时间更新，设置剩余时间
@@ -137,16 +159,27 @@ export const useMainStore = defineStore('main', {
         this.players = [];
         this.gameActive = false;
         this.distributionActive = false;
-        // 断开socket连接避免重连
-        if (this.socket) {
-          this.socket.disconnect();
-          this.socket = null;
-        }
+        // 使用disconnectSocket方法确保完全清理
+        this.disconnectSocket();
         // 跳转到房间列表
         setTimeout(() => {
           window.location.href = '/';
         }, 100);
       });
+    },
+    disconnectSocket() {
+      if (this.socket) {
+        console.log('主动断开socket连接');
+        this.socket.removeAllListeners();
+        this.socket.disconnect();
+        this.socket = null;
+      }
+      
+      // 清除心跳定时器
+      if (this.heartbeatInterval) {
+        clearInterval(this.heartbeatInterval);
+        this.heartbeatInterval = null;
+      }
     },
     joinRoom(roomId: string, nickname: string) {
       if (!this.socket) return;
@@ -160,6 +193,10 @@ export const useMainStore = defineStore('main', {
       this.nickname = nickname;
       localStorage.setItem('texas_nickname', nickname); // 保存昵称到localStorage
       localStorage.setItem('texas_currentRoom', roomId); // 保存当前房间到localStorage
+      
+      // 设置新加入标记，避免Room组件重复reconnect
+      sessionStorage.setItem('texas_newJoin', 'true');
+      
       this.socket.emit('join_room', { roomId, playerId, nickname });
     },
     startTimer() {
@@ -189,12 +226,16 @@ export const useMainStore = defineStore('main', {
       this.gameActive = false;
       this.autoStart = false;
       this.distributionActive = false;
+      this.roomLocked = false;
       
-      // 清除定时器
+      // 清除游戏定时器
       if (this.timerId) {
         clearInterval(this.timerId);
         this.timerId = null;
       }
+      
+      // 注意：不在这里清除心跳定时器，因为心跳需要保持连接
+      // 心跳定时器只在disconnectSocket时清除
     }
   }
 });

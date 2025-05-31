@@ -37,6 +37,7 @@ export class RoomThreadManager {
     room.players = [];
     room.participants = [];
     room.autoStart = false;
+    room.locked = false;
     room.gameState = {
       deck: [], 
       communityCards: [], 
