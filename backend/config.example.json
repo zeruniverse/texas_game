@@ -1,0 +1,20 @@
+{
+  "rooms": {
+    "offline": {
+      "count": 10,
+      "namePrefix": "线下桌"
+    },
+    "online": {
+      "count": 5,
+      "namePrefix": "线上桌"
+    }
+  },
+  "gameSettings": {
+    "maxPlayers": 25,
+    "blinds": {
+      "smallBlind": 10,
+      "bigBlind": 20
+    }
+  },
+  "resetPassword": "your_secure_password_here"
+} 

@@ -2,20 +2,135 @@ import { Server, Socket } from 'socket.io';
 import { Room } from '../models/Room';
 import { Player } from '../models/Player';
 import { RoomThreadManager } from '../services/RoomThreadManager';
+import { config } from '../config';
 import { v4 as uuidv4 } from 'uuid';
+import { setResetServerFunction } from '../server';
 
 const rooms: Room[] = [];
 let threadManager: RoomThreadManager;
 
 export function roomController(io: Server) {
-  // 初始化9个房间，前6为线下，后3为线上
-  for (let i = 1; i <= 9; i++) {
+  // 重置服务器函数（移到这里可以访问handleThreadMessage）
+  async function resetServer() {
+    try {
+      console.log('开始重置服务器...');
+      
+      // 1. 通知所有客户端即将重置
+      io.emit('server_reset_start', { message: '服务器即将重置，请稍后重新连接' });
+      
+      // 2. 给用户一点时间看到消息
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // 3. 强制断开所有客户端连接
+      const sockets = await io.fetchSockets();
+      for (const socket of sockets) {
+        socket.emit('kicked_out', { message: '服务器重置，请刷新页面重新连接' });
+        socket.disconnect(true);
+      }
+      
+      // 4. 关闭所有房间线程
+      if (threadManager) {
+        await threadManager.shutdown();
+      }
+      
+      // 5. 清空房间数组
+      rooms.length = 0;
+      
+      // 6. 重新创建房间（使用当前配置）
+      let roomCounter = 1;
+      
+      // 创建线下房间
+      for (let i = 1; i <= config.rooms.offline.count; i++) {
+        rooms.push({
+          id: `room${roomCounter}`,
+          name: `${config.rooms.offline.namePrefix}${i}`,
+          maxPlayers: config.gameSettings.maxPlayers,
+          players: [],
+          online: false,
+          autoStart: false,
+          locked: false,
+          lastActiveTime: Date.now(),
+          threadStatus: 'idle',
+          gameState: { 
+            deck: [], 
+            communityCards: [], 
+            pot: 0, 
+            bets: {}, 
+            totalBets: {}, 
+            currentTurn: 0, 
+            dealerIndex: 0, 
+            blinds: { sb: config.gameSettings.blinds.smallBlind, bb: config.gameSettings.blinds.bigBlind }, 
+            sbIndex: 0, 
+            bbIndex: 1, 
+            playerHands: {}, 
+            currentBet: config.gameSettings.blinds.bigBlind, 
+            folded: [], 
+            round: 0, 
+            acted: [] 
+          }
+        });
+        roomCounter++;
+      }
+      
+      // 创建线上房间
+      for (let i = 1; i <= config.rooms.online.count; i++) {
+        rooms.push({
+          id: `room${roomCounter}`,
+          name: `${config.rooms.online.namePrefix}${i}`,
+          maxPlayers: config.gameSettings.maxPlayers,
+          players: [],
+          online: true,
+          autoStart: false,
+          locked: false,
+          lastActiveTime: Date.now(),
+          threadStatus: 'idle',
+          gameState: { 
+            deck: [], 
+            communityCards: [], 
+            pot: 0, 
+            bets: {}, 
+            totalBets: {}, 
+            currentTurn: 0, 
+            dealerIndex: 0, 
+            blinds: { sb: config.gameSettings.blinds.smallBlind, bb: config.gameSettings.blinds.bigBlind }, 
+            sbIndex: 0, 
+            bbIndex: 1, 
+            playerHands: {}, 
+            currentBet: config.gameSettings.blinds.bigBlind, 
+            folded: [], 
+            round: 0, 
+            acted: [] 
+          }
+        });
+        roomCounter++;
+      }
+      
+      // 7. 重新初始化线程管理器
+      threadManager = new RoomThreadManager(rooms, handleThreadMessage);
+      
+      console.log(`服务器重置完成，重新创建了 ${config.rooms.offline.count} 个线下房间和 ${config.rooms.online.count} 个线上房间`);
+      
+      return true;
+    } catch (error) {
+      console.error('重置服务器失败:', error);
+      return false;
+    }
+  }
+
+  // 将重置函数注册到HTTP接口
+  setResetServerFunction(resetServer);
+
+  // 从配置文件动态创建房间
+  let roomCounter = 1;
+  
+  // 创建线下房间
+  for (let i = 1; i <= config.rooms.offline.count; i++) {
     rooms.push({
-      id: `room${i}`,
-      name: `房间${i}`,
-      maxPlayers: 20,
+      id: `room${roomCounter}`,
+      name: `${config.rooms.offline.namePrefix}${i}`,
+      maxPlayers: config.gameSettings.maxPlayers,
       players: [],
-      online: i > 6,
+      online: false,
       autoStart: false,
       locked: false,
       lastActiveTime: Date.now(),
@@ -28,17 +143,53 @@ export function roomController(io: Server) {
         totalBets: {}, 
         currentTurn: 0, 
         dealerIndex: 0, 
-        blinds: { sb: 5, bb: 10 }, 
+        blinds: { sb: config.gameSettings.blinds.smallBlind, bb: config.gameSettings.blinds.bigBlind }, 
         sbIndex: 0, 
         bbIndex: 1, 
         playerHands: {}, 
-        currentBet: 10, 
+        currentBet: config.gameSettings.blinds.bigBlind, 
         folded: [], 
         round: 0, 
         acted: [] 
       }
     });
+    roomCounter++;
   }
+  
+  // 创建线上房间  
+  for (let i = 1; i <= config.rooms.online.count; i++) {
+    rooms.push({
+      id: `room${roomCounter}`,
+      name: `${config.rooms.online.namePrefix}${i}`,
+      maxPlayers: config.gameSettings.maxPlayers,
+      players: [],
+      online: true,
+      autoStart: false,
+      locked: false,
+      lastActiveTime: Date.now(),
+      threadStatus: 'idle',
+      gameState: { 
+        deck: [], 
+        communityCards: [], 
+        pot: 0, 
+        bets: {}, 
+        totalBets: {}, 
+        currentTurn: 0, 
+        dealerIndex: 0, 
+        blinds: { sb: config.gameSettings.blinds.smallBlind, bb: config.gameSettings.blinds.bigBlind }, 
+        sbIndex: 0, 
+        bbIndex: 1, 
+        playerHands: {}, 
+        currentBet: config.gameSettings.blinds.bigBlind, 
+        folded: [], 
+        round: 0, 
+        acted: [] 
+      }
+    });
+    roomCounter++;
+  }
+
+  console.log(`已根据配置创建 ${config.rooms.offline.count} 个线下房间和 ${config.rooms.online.count} 个线上房间`);
 
   // 初始化线程管理器
   threadManager = new RoomThreadManager(rooms, handleThreadMessage);
@@ -433,6 +584,33 @@ export function roomController(io: Server) {
       } catch (error) {
         socket.emit('kicked_out', { message: '重连失败，请重新进入房间' });
         socket.disconnect();
+      }
+    });
+
+    // 重置服务器 - 需要密码验证
+    socket.on('reset_server', async ({ password }) => {
+      try {
+        // 验证密码
+        if (!password || password !== config.resetPassword) {
+          socket.emit('reset_server_response', { success: false, error: '密码错误' });
+          console.log(`重置服务器请求被拒绝：密码错误 (来自 ${socket.id})`);
+          return;
+        }
+
+        console.log(`收到重置服务器请求 (来自 ${socket.id})，密码验证通过`);
+        
+        // 密码正确，执行重置
+        const resetSuccess = await resetServer();
+        
+        if (resetSuccess) {
+          // 重置成功，但此时连接已断开，无需发送响应
+          console.log('服务器重置成功');
+        } else {
+          socket.emit('reset_server_response', { success: false, error: '重置服务器失败' });
+        }
+      } catch (error) {
+        console.error('重置服务器过程中发生错误:', error);
+        socket.emit('reset_server_response', { success: false, error: '重置服务器失败' });
       }
     });
 

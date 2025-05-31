@@ -166,6 +166,26 @@ export const useMainStore = defineStore('main', {
           window.location.href = '/';
         }, 100);
       });
+
+      // 监听服务器重置开始事件
+      this.socket.on('server_reset_start', (data: { message: string }) => {
+        alert(data.message);
+        // 清理所有状态
+        this.currentRoom = null;
+        this.nickname = '';
+        this.participants = [];
+        this.players = [];
+        this.gameActive = false;
+        this.distributionActive = false;
+        this.messages = [];
+        
+        // 清理本地存储
+        localStorage.removeItem('texas_currentRoom');
+        localStorage.removeItem('texas_nickname');
+        
+        // 断开连接
+        this.disconnectSocket();
+      });
     },
     disconnectSocket() {
       if (this.socket) {
