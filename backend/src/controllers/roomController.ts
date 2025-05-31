@@ -50,7 +50,8 @@ export function roomController(io: Server) {
         const roomIndex = rooms.findIndex(r => r.id === data.roomId);
         if (roomIndex !== -1) {
           // 同步更新主线程的房间数据
-          rooms[roomIndex] = { ...rooms[roomIndex], ...data.data };
+          const { id, lastActiveTime, threadStatus, threadId, ...updateData } = data.data;
+          rooms[roomIndex] = { ...rooms[roomIndex], ...updateData };
           
           // 向所有客户端广播房间列表更新
           const roomsInfo = rooms.map(room => ({

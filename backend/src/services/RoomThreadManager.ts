@@ -1,4 +1,4 @@
-import { Worker } from 'worker_threads';
+import { Worker, WorkerOptions } from 'worker_threads';
 import { Room } from '../models/Room';
 import { GameTask, GameTaskResponse } from '../models/GameTask';
 import path from 'path';
@@ -21,16 +21,39 @@ export class RoomThreadManager {
     }, 30000); // 每30秒检查一次
   }
 
-  // 获取Worker文件的正确路径
+  // 获取Worker文件的正确路径，支持开发环境加载 TS 源文件以便调试
   private getWorkerPath(): string {
-    // 检查是否在生产环境（编译后的代码中）
     if (__filename.endsWith('.js')) {
-      // 生产环境：从 dist/services/ 到 dist/workers/
+      // 生产环境：加载编译后的 JS
       return path.join(__dirname, '../workers/roomWorker.js');
     } else {
-      // 开发环境：从 src/services/ 到 dist/workers/
-      return path.join(__dirname, '../../dist/workers/roomWorker.js');
+      // 开发环境：加载 TS 源文件
+      return path.join(__dirname, '../workers/roomWorker.ts');
     }
+  }
+
+  // 重置房间到初始状态
+  private resetRoomToInitialState(room: Room): void {
+    room.players = [];
+    room.participants = [];
+    room.autoStart = false;
+    room.gameState = {
+      deck: [], 
+      communityCards: [], 
+      pot: 0, 
+      bets: {}, 
+      totalBets: {}, 
+      currentTurn: 0, 
+      dealerIndex: 0, 
+      blinds: { sb: 5, bb: 10 }, 
+      sbIndex: 0, 
+      bbIndex: 1, 
+      playerHands: {}, 
+      currentBet: 10, 
+      folded: [], 
+      round: 0, 
+      acted: [] 
+    };
   }
 
   // 启动房间线程
@@ -47,9 +70,15 @@ export class RoomThreadManager {
     }
 
     try {
-      const worker = new Worker(this.getWorkerPath(), {
+      // 配置 Worker 选项
+      const workerOptions: WorkerOptions = {
         workerData: { roomId, room }
-      });
+      };
+      // 如果是 TS 环境，则通过 ts-node/register 加载源文件
+      if (__filename.endsWith('.ts')) {
+        workerOptions.execArgv = ['-r', 'ts-node/register'];
+      }
+      const worker = new Worker(this.getWorkerPath(), workerOptions);
 
       // 设置消息监听
       worker.on('message', (response: GameTaskResponse) => {
@@ -75,7 +104,7 @@ export class RoomThreadManager {
       worker.on('exit', (code) => {
         console.log(`房间 ${roomId} 线程退出，代码: ${code}`);
         this.workers.delete(roomId);
-        // 更新房间状态
+        // 更新房间状态并重置到初始状态
         const room = this.rooms.find(r => r.id === roomId);
         if (room) {
           room.threadStatus = 'idle';
@@ -117,6 +146,9 @@ export class RoomThreadManager {
       if (room) {
         room.threadStatus = 'idle';
         room.threadId = undefined;
+        
+        // 重置房间到初始状态
+        this.resetRoomToInitialState(room);
       }
       
       console.log(`房间 ${roomId} 线程已停止`);
@@ -167,7 +199,7 @@ export class RoomThreadManager {
     const IDLE_TIMEOUT = 60 * 1000; // 1分钟
 
     for (const room of this.rooms) {
-      if (room.threadStatus === 'running' && room.players.length === 0) {
+      if (room.threadStatus === 'running' && room.players.filter(p => p.inGame).length === 0) {
         const idleTime = now - room.lastActiveTime;
         if (idleTime > IDLE_TIMEOUT) {
           console.log(`房间 ${room.id} 空闲超过1分钟，准备清理线程`);

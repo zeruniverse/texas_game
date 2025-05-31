@@ -57,15 +57,15 @@ function emitToPlayer(socketId: string, event: string, data: any) {
 
 // 同步游戏状态给重连的玩家
 function syncGameStateToPlayer(socketId: string, playerId: string) {
+  // 先发送房间更新，确保前端有正确的players列表
+  emitToPlayer(socketId, 'room_update', room);
+
   // 如果游戏未开始，不需要同步
   if (!room.gameState || !room.participants || room.participants.length === 0) {
     return;
   }
   
   const gs = room.gameState;
-  
-  // 先发送房间更新，确保前端有正确的players列表
-  emitToPlayer(socketId, 'room_update', room);
   
   // 发送游戏开始事件
   emitToPlayer(socketId, 'game_started', {});
@@ -1028,6 +1028,8 @@ function handleReconnect(task: GameTask) {
   room.lastActiveTime = Date.now();
   
   emitToRoom('chat_broadcast', { message: `${player.nickname} 重新连接`, type: 'system' });
+  
+  // 先向所有房间内玩家发送房间更新
   emitToRoom('room_update', room);
   
   // 同步游戏状态给重连的玩家
