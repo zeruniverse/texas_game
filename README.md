@@ -1,5 +1,7 @@
 # Texas Holdem 在线德州扑克
 
+**进房间要先cashin, 钱不够无法开始**
+
 本项目包含前端和后端两部分：
 
 - `frontend`：Vue3 + TypeScript 前端，使用 Vite、Pinia、Element Plus。

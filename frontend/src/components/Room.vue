@@ -3,7 +3,7 @@
     <!-- 快捷操作按钮 - 固定在顶部 -->
     <div class="floating-header">
       <!-- 只有在未开始游戏且已在房间的玩家显示开始/CashIn/CashOut -->
-      <template v-if="!store.gameActive && isInRoom">
+      <template v-if="store.stage === 'idle' && isInRoom">
         <el-button type="success" @click="onStartGame"
                    :class="{ 'colored-border': true, 'disabled-border': !canStartGame }">
           开始游戏
@@ -16,7 +16,7 @@
         </el-button>
       </template>
       <!-- 游戏进行时，参与游戏的玩家快捷操作（线上与线下翻牌前） -->
-      <template v-if="store.gameActive && isInGame && !store.distributionActive">
+      <template v-if="store.stage === 'playing' && isInGame">
         <el-button @click="extendTime"
                    :disabled="!isMyTurn || !canExtendTime"
                    :class="{ 'colored-border': isMyTurn && canExtendTime, 'disabled-border': !isMyTurn || !canExtendTime }">
@@ -34,7 +34,7 @@
         </el-button>
       </template>
       <!-- 线下分池阶段显示Take/TakeAll -->
-      <template v-if="store.distributionActive && isInGame && !online">
+      <template v-if="store.stage === 'distribution' && isInGame && !online">
         <el-input v-model.number="takeAmount" type="number" placeholder="Take 数量" style="width: 80px; margin-right:8px;" />
         <el-button type="primary" @click="onTake"
                    :disabled="takeAmount < 0"
@@ -52,7 +52,7 @@
     <el-main class="game-main">
       <!-- 游戏信息展示 -->
       <el-card class="game-info">
-        <div>我的底牌: <span v-if="!isInGame">未参与游戏</span>
+        <div>我的底牌: <span v-if="store.stage === 'playing' && !isInGame">未参与游戏</span>
           <span v-else-if="online">
             <span v-if="store.hand.length > 0" v-html="formatCards(store.hand)"></span>
             <span v-else>-</span>
@@ -71,7 +71,7 @@
         <div class="left-panel">
           <PlayerList />
           <!-- 分池阶段 -->
-          <template v-if="store.distributionActive && isInGame && !online">
+          <template v-if="store.stage === 'distribution' && isInGame && !online">
             <div class="take-controls">
               <el-input v-model.number="takeAmount" type="number" placeholder="Take 数量" class="take-input" />
               <el-button type="primary" @click="onTake"
@@ -89,7 +89,7 @@
             </div>
           </template>
           <!-- 正常操作阶段 -->
-          <template v-else-if="store.gameActive && isInGame && !store.distributionActive">
+          <template v-else-if="store.stage === 'playing' && isInGame">
             <ActionBar style="position:relative; z-index:100;" />
           </template>
           <div class="control-buttons">
@@ -116,7 +116,7 @@
         <div class="mobile-section">
           <PlayerList />
           <!-- 分池阶段 -->
-          <template v-if="store.distributionActive && isInGame && !online">
+          <template v-if="store.stage === 'distribution' && isInGame && !online">
             <div class="take-controls-mobile">
               <el-input v-model.number="takeAmount" type="number" placeholder="Take 数量" class="take-input-mobile" />
               <el-button type="primary" @click="onTake"
@@ -134,7 +134,7 @@
             </div>
           </template>
           <!-- 正常操作阶段 -->
-          <template v-else-if="store.gameActive && isInGame && !store.distributionActive">
+          <template v-else-if="store.stage === 'playing' && isInGame">
             <ActionBar />
           </template>
           <div class="control-buttons-mobile">
@@ -266,7 +266,7 @@ const canCall = computed(() => isMyTurn.value && toCall.value > 0 && ownPlayer.v
 const canCheck = computed(() => isMyTurn.value && toCall.value === 0);
 const canExtendTime = computed(() => {
   // 游戏未开始时不能延时
-  if (!store.gameActive) return false;
+  if (store.stage !== 'playing') return false;
   // 不在游戏中的玩家不能延时
   if (!isInGame.value) return false;
   return true;

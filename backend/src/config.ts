@@ -21,6 +21,7 @@ interface Config {
   };
   gameSettings: GameSettings;
   resetPassword: string;
+  roomThreadPreserve: boolean;
 }
 
 // 读取配置文件
@@ -52,7 +53,8 @@ function loadConfig(): Config {
           bigBlind: 10
         }
       },
-      resetPassword: "admin123"
+      resetPassword: "admin123",
+      roomThreadPreserve: false
     };
   }
 }

@@ -60,15 +60,17 @@ function syncGameStateToPlayer(socketId: string, playerId: string) {
   // 先发送房间更新，确保前端有正确的players列表
   emitToPlayer(socketId, 'room_update', room);
   
-  // 如果游戏未开始，不需要同步
-  if (!room.gameState || !room.participants || room.participants.length === 0) {
+  // 如果游戏状态不存在，不需要同步
+  if (!room.gameState) {
     return;
   }
   
   const gs = room.gameState;
   
-  // 发送游戏开始事件
-  emitToPlayer(socketId, 'game_started', {});
+  // 如果游戏正在进行中，发送游戏开始事件
+  if (room.participants && room.participants.length > 0) {
+    emitToPlayer(socketId, 'game_started', {});
+  }
   
   // 发送游戏状态
   emitToPlayer(socketId, 'game_state', {
@@ -78,18 +80,22 @@ function syncGameStateToPlayer(socketId: string, playerId: string) {
     currentTurn: gs.currentTurn,
     dealerIndex: gs.dealerIndex,
     round: gs.round,
-    currentBet: gs.currentBet
+    currentBet: gs.currentBet,
+    stage: gs.stage
   });
   
-  // 如果该玩家参与游戏并且是线上房间，发送手牌
-  if (room.participants.includes(playerId) && gs.playerHands && gs.playerHands[playerId] && room.online) {
+  // 如果该玩家有手牌记录并且是线上房间，发送手牌（便于复盘）
+  if (gs.playerHands && gs.playerHands[playerId] && room.online) {
     emitToPlayer(socketId, 'deal_hand', { hand: gs.playerHands[playerId] });
   }
 
-  emitToPlayer(socketId, 'action_request', { 
-    playerId: room.players[gs.currentTurn].id, 
-    seconds: (actionDeadline && actionDeadline > Date.now())? Math.ceil((actionDeadline - Date.now()) / 1000): 0
-  });
+  // 只有游戏进行中才发送行动请求
+  if (room.participants && room.participants.length > 0 && gs.currentTurn >= 0) {
+    emitToPlayer(socketId, 'action_request', { 
+      playerId: room.players[gs.currentTurn].id, 
+      seconds: (actionDeadline && actionDeadline > Date.now())? Math.ceil((actionDeadline - Date.now()) / 1000): 0
+    });
+  }
 }
 
 // 开始游戏
@@ -105,6 +111,7 @@ function startGame() {
   gs.acted = [];
   gs.totalBets = {};
   gs.playerHands = {};
+  gs.stage = 'playing';
 
   // 获取参与游戏的玩家列表
   const participatingPlayers = room.players.filter(p => room.participants!.includes(p.id));
@@ -134,18 +141,7 @@ function startGame() {
   const sbPlayer = participatingPlayers[sbIndex];
   const bbPlayer = participatingPlayers[bbIndex];
 
-  // 确保玩家有足够筹码下盲注
-  if (sbPlayer.chips < gs.blinds.sb) {
-    emitToRoom('chat_broadcast', { message: `${sbPlayer.nickname} 筹码不足以下小盲注，游戏无法开始` });
-    room.participants = [];
-    return;
-  }
-  if (bbPlayer.chips < gs.blinds.bb) {
-    emitToRoom('chat_broadcast', { message: `${bbPlayer.nickname} 筹码不足以下大盲注，游戏无法开始` });
-    room.participants = [];
-    return;
-  }
-
+  // 下盲注（盲注检查已在handleStartGame中完成）
   sbPlayer.chips -= gs.blinds.sb;
   bbPlayer.chips -= gs.blinds.bb;
   gs.bets[sbPlayer.id] = gs.blinds.sb;
@@ -170,7 +166,8 @@ function startGame() {
     currentTurn: gs.currentTurn,
     dealerIndex: gs.dealerIndex,
     round: gs.round,
-    currentBet: gs.currentBet
+    currentBet: gs.currentBet,
+    stage: gs.stage
   });
 
   // 请求第一个玩家行动
@@ -282,7 +279,6 @@ function continueToNextPlayer() {
       }
     }
     if (allActed && allBetsEqual) {
-      // 回合结束，进入下一阶段
       nextRound();
       return;
     }
@@ -295,24 +291,16 @@ function continueToNextPlayer() {
   while (attempts < participatingPlayers.length) {
     const nextPlayer = participatingPlayers[nextParticipantIdx];
     
-    // 如果玩家没有弃牌，并且要么有筹码，要么需要决定是否跟注
-    if (!gs.folded.includes(nextPlayer.id)) {
-      const playerBet = gs.bets[nextPlayer.id] || 0;
-      const needToCall = gs.currentBet - playerBet;
-      
-      // 玩家有筹码，或者是全下但当前投注不足（需要决定是否能跟注）
-      if (nextPlayer.chips > 0 || (nextPlayer.chips === 0 && needToCall > 0)) {
-        break;
-      }
+    // 如果玩家没有弃牌，且有筹码
+    if (!gs.folded.includes(nextPlayer.id) && nextPlayer.chips > 0) {
+      break;
     }
     
     nextParticipantIdx = (nextParticipantIdx + 1) % participatingPlayers.length;
     attempts++;
   }
   
-  // 如果找不到可行动的玩家，先同步当前游戏状态以更新 pot/bets 等
   if (attempts >= participatingPlayers.length) {
-    // 同步当前游戏状态
     emitToRoom('game_state', {
       communityCards: gs.communityCards,
       pot: gs.pot,
@@ -320,10 +308,9 @@ function continueToNextPlayer() {
       currentTurn: gs.currentTurn,
       dealerIndex: gs.dealerIndex,
       round: gs.round,
-      currentBet: gs.currentBet
+      currentBet: gs.currentBet,
+      stage: gs.stage
     });
-    
-    // 检查并进入下一阶段或结束游戏
     checkRoundEnd();
     return;
   }
@@ -339,7 +326,8 @@ function continueToNextPlayer() {
     currentTurn: gs.currentTurn,
     dealerIndex: gs.dealerIndex,
     round: gs.round,
-    currentBet: gs.currentBet
+    currentBet: gs.currentBet,
+    stage: gs.stage
   });
   emitToRoom('action_request', { playerId: room.players[gs.currentTurn].id, seconds: 30 });
   
@@ -365,6 +353,22 @@ function handleGameOver() {
     room.gameState.currentTurn = -1; // 设置为无效值
     room.gameState.acted = [];
     room.gameState.folded = [];
+    room.gameState.stage = 'idle';
+  }
+  
+  // 同步最终的游戏状态（包括完整的公共牌）
+  const gs = room.gameState;
+  if (gs) {
+    emitToRoom('game_state', {
+      communityCards: gs.communityCards,
+      pot: gs.pot,
+      bets: gs.bets,
+      currentTurn: gs.currentTurn,
+      dealerIndex: gs.dealerIndex,
+      round: gs.round,
+      currentBet: gs.currentBet,
+      stage: gs.stage
+    });
   }
   
   // 立即同步房间状态
@@ -575,6 +579,28 @@ function handleStartGame(task: GameTask) {
     return;
   }
   
+  // 提前检查盲注，避免前端进入错误状态
+  const participatingPlayers = room.players.filter(p => participants.includes(p.id));
+  const dealerIndex = (room.gameState?.dealerIndex ?? -1 + 1) % participatingPlayers.length;
+  const sbIndex = (dealerIndex + 1) % participatingPlayers.length;
+  const bbIndex = (sbIndex + 1) % participatingPlayers.length;
+  const sbPlayer = participatingPlayers[sbIndex];
+  const bbPlayer = participatingPlayers[bbIndex];
+  
+  // 获取盲注大小
+  const blinds = room.gameState?.blinds || { sb: 10, bb: 20 };
+  
+  // 检查小盲注和大盲注玩家的筹码
+  if (sbPlayer.chips < blinds.sb) {
+    sendResponse(task.id, false, null, `${sbPlayer.nickname} 筹码不足以下小盲注，游戏无法开始`);
+    return;
+  }
+  if (bbPlayer.chips < blinds.bb) {
+    sendResponse(task.id, false, null, `${bbPlayer.nickname} 筹码不足以下大盲注，游戏无法开始`);
+    return;
+  }
+  
+  // 所有检查都通过，才设置participants并开始游戏
   room.participants = participants;
   room.lastActiveTime = Date.now();
   
@@ -790,6 +816,14 @@ function checkRoundEnd() {
   const activeIds = room.participants!.filter(id => !gs.folded.includes(id));
   const activePlayers = activeIds.map(id => room.players.find(p => p.id === id)!);
   
+  // 如果所有活跃玩家都已全下（chips 都为 0），跳过投注阶段
+  const playersWithChips = activePlayers.filter(p => p.chips > 0);
+  if (playersWithChips.length === 0) {
+    // 直接进入下一回合处理
+    nextRound();
+    return;
+  }
+
   // 检查是否所有活跃玩家都已行动且投注一致
   let allActed = true;
   let allBetsEqual = true;
@@ -882,7 +916,8 @@ function nextRound() {
     currentTurn: gs.currentTurn,
     dealerIndex: gs.dealerIndex,
     round: gs.round,
-    currentBet: gs.currentBet
+    currentBet: gs.currentBet,
+    stage: gs.stage
   });
   
   // 原子化定时器操作：清除旧定时器并立即启动新定时器
@@ -944,85 +979,100 @@ function dealCommunityCards() {
 
 // 摊牌比大小
 function showdown() {
-  // 清除所有定时器，进入摊牌阶段
   clearActionTimer();
   const gs = room.gameState!;
   const activeIds = room.participants!.filter(id => !gs.folded.includes(id));
   const activePlayers = activeIds.map(id => room.players.find(p => p.id === id)!);
   
-  // 只有一个玩家时不需要摊牌
-  if (activePlayers.length === 1) {
-    const winner = activePlayers[0];
-    winner.chips += gs.pot;
-    emitToRoom('chat_broadcast', { message: `${winner.nickname} 赢得底池 ${gs.pot}` });
-  } else {
-    // 多个玩家摊牌，显示公共牌和手牌信息
-    emitToRoom('chat_broadcast', { message: '=== 摊牌阶段 ===', type: 'system' });
-    
-    // 显示公共牌
-    if (gs.communityCards.length > 0) {
-      const communityCardsStr = gs.communityCards.join(' ');
-      emitToRoom('chat_broadcast', { message: `公共牌: ${communityCardsStr}`, type: 'system' });
-    }
-    
-    // 显示所有未弃牌玩家的手牌
-    if (room.online && gs.playerHands) {
-      // 线上房间显示所有玩家手牌
-      activePlayers.forEach(player => {
-        if (gs.playerHands[player.id]) {
-          const handCardsStr = gs.playerHands[player.id].join(' ');
-          emitToRoom('chat_broadcast', { message: `${player.nickname}的手牌: ${handCardsStr}`, type: 'system' });
-        }
-      });
-    } else {
-      // 线下房间提示玩家亮牌
-      emitToRoom('chat_broadcast', { message: '请各位玩家亮出手牌进行比较', type: 'system' });
-    }
-    
-    // 比较手牌大小并决定胜负
-    if (room.online && gs.playerHands) {
-      // 线上房间，自动比较手牌大小
-      let bestHand = null;
-      let winners: Player[] = [];
-      
-      for (const player of activePlayers) {
-        if (gs.playerHands[player.id]) {
-          const hand = [...gs.playerHands[player.id], ...gs.communityCards];
-          const handValue = evaluateHand(hand);
-          
-          if (!bestHand || handValue > bestHand) {
-            bestHand = handValue;
-            winners = [player];
-          } else if (handValue === bestHand) {
-            winners.push(player);
-          }
-        }
-      }
-      
-      // 分配奖金
-      const winningsPerPlayer = Math.floor(gs.pot / winners.length);
-      winners.forEach(winner => {
-        winner.chips += winningsPerPlayer;
-      });
-      
-      if (winners.length === 1) {
-        emitToRoom('chat_broadcast', { message: `🏆 ${winners[0].nickname} 赢得底池 ${gs.pot}`, type: 'system' });
-      } else {
-        const winnerNames = winners.map(w => w.nickname).join(', ');
-        emitToRoom('chat_broadcast', { message: `🏆 ${winnerNames} 平分底池 ${gs.pot}`, type: 'system' });
-      }
-    } else {
-      // 线下房间，不自动分配奖金，让玩家自行take
-      emitToRoom('chat_broadcast', { message: `奖池共计 ${gs.pot}，请各位玩家根据牌型大小自行分配奖金`, type: 'system' });
-      emitToRoom('chat_broadcast', { message: '可使用 take 命令取奖金，或 take_all 取全部奖金', type: 'system' });
-      
-      // 发送分池阶段开始事件，让前端显示take按钮
-      emitToRoom('distribution_start', {});
-    }
-    
-    emitToRoom('chat_broadcast', { message: '===============', type: 'system' });
+  // 摊牌阶段展示
+  emitToRoom('chat_broadcast', { message: '=== 摊牌阶段 ===', type: 'system' });
+  
+  // 显示公共牌
+  if (gs.communityCards.length > 0) {
+    const communityCardsStr = gs.communityCards.join(' ');
+    emitToRoom('chat_broadcast', { message: `公共牌: ${communityCardsStr}`, type: 'system' });
   }
   
+  // 显示所有未弃牌玩家的手牌
+  if (room.online && gs.playerHands) {
+    // 线上房间显示所有玩家手牌
+    activePlayers.forEach(player => {
+      if (gs.playerHands[player.id]) {
+        const handCardsStr = gs.playerHands[player.id].join(' ');
+        emitToRoom('chat_broadcast', { message: `${player.nickname}的手牌: ${handCardsStr}`, type: 'system' });
+      }
+    });
+  } else {
+    // 线下房间提示玩家亮牌
+    emitToRoom('chat_broadcast', { message: '请各位玩家亮出手牌进行比较', type: 'system' });
+  }
+  
+  if (room.online && gs.playerHands) {
+    // 线上房间，自动比较手牌大小并分配侧池
+    // 计算主池和各侧池分配信息
+    const pots = splitPotSidePots(gs.totalBets, activeIds);
+    let totalDistributed = 0;
+    pots.forEach((pot: SidePot) => {
+      let bestHand: any = null;
+      let winners: Player[] = [];
+      pot.eligibleIds.forEach((pid: string) => {
+        const player = room.players.find(p => p.id === pid)!;
+        const hand = [...gs.playerHands[pid], ...gs.communityCards];
+        const hv = evaluateHand(hand);
+        if (!bestHand || hv > bestHand) {
+          bestHand = hv;
+          winners = [player];
+        } else if (hv === bestHand) {
+          winners.push(player);
+        }
+      });
+      const baseWin = Math.floor(pot.amount / winners.length);
+      let remainder = pot.amount - baseWin * winners.length;
+      
+      // 显示该池的分配结果
+      if (winners.length === 1) {
+        emitToRoom('chat_broadcast', { message: `${winners[0].nickname} 赢得池子 ${pot.amount}`, type: 'system' });
+      } else {
+        const winnerNames = winners.map(w => w.nickname).join(', ');
+        emitToRoom('chat_broadcast', { message: `${winnerNames} 平分池子 ${pot.amount}`, type: 'system' });
+      }
+      
+      const sbOrder: string[] = [];
+      let idx = gs.sbIndex;
+      while (sbOrder.length < winners.length) {
+        const pid = activeIds[idx % activeIds.length];
+        if (winners.some(w => w.id === pid)) {
+          sbOrder.push(pid);
+        }
+        idx++;
+      }
+      winners.forEach(w => {
+        w.chips += baseWin;
+      });
+      sbOrder.forEach(pid => {
+        if (remainder > 0) {
+          room.players.find(p => p.id === pid)!.chips++;
+          remainder--;
+        }
+      });
+      totalDistributed += pot.amount;
+    });
+    
+    // 显示总分配结果
+    emitToRoom('chat_broadcast', { message: `总计分配奖池: ${totalDistributed}`, type: 'system' });
+    gs.pot = 0; // 奖池已分配完毕
+  } else {
+    // 线下房间，不自动分配奖金，让玩家自行take
+    emitToRoom('chat_broadcast', { message: `奖池共计 ${gs.pot}，请各位玩家根据牌型大小自行分配奖金`, type: 'system' });
+    emitToRoom('chat_broadcast', { message: '可使用 take 命令取奖金，或 take_all 取全部奖金', type: 'system' });
+    
+    // 设置为分池阶段
+    gs.stage = 'distribution';
+    // 发送分池阶段开始事件，让前端显示take按钮
+    emitToRoom('distribution_start', {});
+  }
+  
+  emitToRoom('chat_broadcast', { message: '===============', type: 'system' });
   emitToRoom('room_update', room);
   
   // 线下房间多人摊牌时不立即结束游戏，等待玩家自行分配奖池
@@ -1197,7 +1247,8 @@ function handleTake(task: GameTask) {
     currentTurn: gs.currentTurn,
     dealerIndex: gs.dealerIndex,
     round: gs.round,
-    currentBet: gs.currentBet
+    currentBet: gs.currentBet,
+    stage: gs.stage
   });
   
   if (gs.pot === 0) {
@@ -1240,7 +1291,8 @@ function handleTakeAll(task: GameTask) {
     currentTurn: gs.currentTurn,
     dealerIndex: gs.dealerIndex,
     round: gs.round,
-    currentBet: gs.currentBet
+    currentBet: gs.currentBet,
+    stage: gs.stage
   });
   
   handleGameOver();
@@ -1274,4 +1326,24 @@ setInterval(() => {
   }
 }, 30000);
 
-console.log(`房间 ${roomId} 工作线程已启动`); 
+console.log(`房间 ${roomId} 工作线程已启动`);
+
+// 内联侧池计算工具类型和函数
+interface SidePot { amount: number; eligibleIds: string[]; }
+function splitPotSidePots(
+  totalBets: Record<string, number>,
+  activeIds: string[]
+): SidePot[] {
+  const entries = Object.entries(totalBets).map(([pid, amt]) => ({ pid, amt }));
+  const uniqueAmounts = Array.from(new Set(entries.map(e => e.amt))).sort((a, b) => a - b);
+  const sidePots: SidePot[] = [];
+  let prev = 0;
+  for (const amt of uniqueAmounts) {
+    const eligibleAll = entries.filter(e => e.amt >= amt).map(e => e.pid);
+    if (eligibleAll.length === 0) { prev = amt; continue; }
+    const potAmt = (amt - prev) * eligibleAll.length;
+    sidePots.push({ amount: potAmt, eligibleIds: eligibleAll.filter(pid => activeIds.includes(pid)) });
+    prev = amt;
+  }
+  return sidePots;
+} 

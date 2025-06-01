@@ -16,5 +16,6 @@
       "bigBlind": 20
     }
   },
-  "resetPassword": "your_secure_password_here"
+  "resetPassword": "your_secure_password_here",
+  "roomThreadPreserve": false
 } 

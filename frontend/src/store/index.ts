@@ -32,7 +32,9 @@ export const useMainStore = defineStore('main', {
     gameActive: false,
     autoStart: false,
     distributionActive: false,
-    roomLocked: false
+    roomLocked: false,
+    // 游戏阶段：'idle'(未开始/已结束), 'playing'(游戏中), 'distribution'(分池中)
+    stage: 'idle' as 'idle' | 'playing' | 'distribution'
   }),
   actions: {
     initSocket() {
@@ -79,12 +81,16 @@ export const useMainStore = defineStore('main', {
         this.distributionActive = false;
       });
       // 接收公共游戏状态
-      this.socket.on('game_state', (data: { communityCards: string[]; pot: number; bets: Record<string, number>; round: number; currentBet: number; currentTurn: number }) => {
+      this.socket.on('game_state', (data: { communityCards: string[]; pot: number; bets: Record<string, number>; round: number; currentBet: number; currentTurn: number; stage?: 'idle' | 'playing' | 'distribution' }) => {
         this.communityCards = data.communityCards;
         this.pot = data.pot;
         this.bets = data.bets;
         this.round = data.round;
         this.currentBet = data.currentBet;
+        // 同步stage状态
+        if (data.stage !== undefined) {
+          this.stage = data.stage;
+        }
         // currentTurn由action_request事件更新，这里不处理
       });
       // 请求玩家行动
@@ -96,8 +102,15 @@ export const useMainStore = defineStore('main', {
       });
       // 游戏启动
       this.socket.on('game_started', () => {
+        // 新一局开始，重置公共牌和投注信息，手牌由deal_hand事件设置
+        this.communityCards = [];
+        this.bets = {};
+        this.currentTurn = '';
+        this.round = 0;
+        this.currentBet = 0;
         this.gameActive = true;
         this.distributionActive = false;
+        this.stage = 'playing';
       });
       // 分奖池阶段
       this.socket.on('distribution_start', () => {
@@ -107,6 +120,7 @@ export const useMainStore = defineStore('main', {
           this.timerId = null;
         }
         this.distributionActive = true;
+        this.stage = 'distribution';
       });
       // 游戏结束
       this.socket.on('game_over', () => {
@@ -117,6 +131,9 @@ export const useMainStore = defineStore('main', {
           this.timerId = null;
         }
         this.distributionActive = false;
+        this.stage = 'idle';
+        // 为了方便复盘，保留手牌和公共牌显示，不在这里清空
+        // 手牌和公共牌将在下一局游戏开始时清空
         // 同时添加系统提示消息
         this.messages.push({ message: '[系统] 游戏结束，请点击开始游戏开始新局' });
       });
@@ -247,6 +264,7 @@ export const useMainStore = defineStore('main', {
       this.autoStart = false;
       this.distributionActive = false;
       this.roomLocked = false;
+      this.stage = 'idle';
       
       // 清除游戏定时器
       if (this.timerId) {

@@ -66,7 +66,8 @@ export function roomController(io: Server) {
             currentBet: config.gameSettings.blinds.bigBlind, 
             folded: [], 
             round: 0, 
-            acted: [] 
+            acted: [],
+            stage: 'idle'
           }
         });
         roomCounter++;
@@ -99,7 +100,8 @@ export function roomController(io: Server) {
             currentBet: config.gameSettings.blinds.bigBlind, 
             folded: [], 
             round: 0, 
-            acted: [] 
+            acted: [],
+            stage: 'idle'
           }
         });
         roomCounter++;
@@ -150,7 +152,8 @@ export function roomController(io: Server) {
         currentBet: config.gameSettings.blinds.bigBlind, 
         folded: [], 
         round: 0, 
-        acted: [] 
+        acted: [],
+        stage: 'idle'
       }
     });
     roomCounter++;
@@ -183,7 +186,8 @@ export function roomController(io: Server) {
         currentBet: config.gameSettings.blinds.bigBlind, 
         folded: [], 
         round: 0, 
-        acted: [] 
+        acted: [],
+        stage: 'idle'
       }
     });
     roomCounter++;

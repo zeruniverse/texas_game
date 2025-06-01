@@ -3,6 +3,7 @@ import { Room } from '../models/Room';
 import { GameTask, GameTaskResponse } from '../models/GameTask';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { config } from '../config';
 
 export class RoomThreadManager {
   private workers: Map<string, Worker> = new Map();
@@ -15,6 +16,15 @@ export class RoomThreadManager {
     this.rooms = rooms;
     this.onMessage = eventHandler;
     
+    // 如果配置要求保留线程，则服务启动时预创建与房间数相同的线程
+    if (config.roomThreadPreserve) {
+      rooms.forEach(r => {
+        this.startRoomThread(r.id).catch(error => {
+          console.error(`启动房间线程 ${r.id} 失败:`, error);
+        });
+      });
+    }
+
     // 定期检查并清理空闲线程
     this.cleanupInterval = setInterval(() => {
       this.checkAndCleanupIdleThreads();
@@ -53,7 +63,8 @@ export class RoomThreadManager {
       currentBet: 10, 
       folded: [], 
       round: 0, 
-      acted: [] 
+      acted: [],
+      stage: 'idle'
     };
   }
 
@@ -135,6 +146,17 @@ export class RoomThreadManager {
       return true;
     }
 
+    // 如果配置保留线程，则仅重置房间状态，不终止 Worker
+    if (config.roomThreadPreserve) {
+      const room = this.rooms.find(r => r.id === roomId);
+      if (room) {
+        // 重置房间到初始状态，但保留线程运行
+        this.resetRoomToInitialState(room);
+        room.threadStatus = 'running';
+      }
+      return true;
+    }
+
     const room = this.rooms.find(r => r.id === roomId);
     if (room) {
       room.threadStatus = 'stopping';
@@ -203,7 +225,6 @@ export class RoomThreadManager {
       if (room.threadStatus === 'running' && room.players.filter(p => p.inGame).length === 0) {
         const idleTime = now - room.lastActiveTime;
         if (idleTime > IDLE_TIMEOUT) {
-          console.log(`房间 ${room.id} 空闲超过1分钟，准备清理线程`);
           this.stopRoomThread(room.id);
         }
       }

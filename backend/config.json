@@ -16,5 +16,6 @@
       "bigBlind": 10
     }
   },
-  "resetPassword": "admin123"
+  "resetPassword": "admin123",
+  "roomThreadPreserve": true
 } 

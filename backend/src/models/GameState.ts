@@ -14,4 +14,5 @@ export interface GameState {
   round: number;
   playerHands: Record<string, string[]>;
   acted: string[];
+  stage: 'idle' | 'playing' | 'distribution';
 }
