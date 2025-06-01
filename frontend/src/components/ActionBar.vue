@@ -1,8 +1,8 @@
 <template>
   <div style="padding: 16px;">
     <el-button @click="extendTime"
-               :disabled="!store.gameActive || !isMyTurn || !isInGame"
-               :class="{ 'colored-border': store.gameActive && isMyTurn && isInGame, 'disabled-border': !store.gameActive || !isMyTurn || !isInGame }">
+               :disabled="!store.gameActive || !isInGame"
+               :class="{ 'colored-border': store.gameActive && isInGame, 'disabled-border': !store.gameActive || !isInGame }">
       延时
     </el-button>
     <el-button :disabled="!canCheck"
@@ -64,7 +64,10 @@ function raise() {
     alert('请输入合法的正整数加注金额');
     return;
   }
-  store.socket.emit('action', { roomId: store.currentRoom, action: 'raise', amount: val });
+  const currentBet = store.bets[store.nickname] || 0;
+  const callAmount = toCall.value;
+  const totalRaiseAmount = currentBet + callAmount + val;
+  store.socket.emit('action', { roomId: store.currentRoom, action: 'raise', amount: totalRaiseAmount });
 }
 
 function extendTime() {

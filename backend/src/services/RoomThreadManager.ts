@@ -262,9 +262,44 @@ export class RoomThreadManager {
 
   // 关闭所有线程
   async shutdown() {
-    const promises = Array.from(this.workers.keys()).map(roomId => 
-      this.stopRoomThread(roomId)
-    );
+    console.log('开始关闭所有房间线程...');
+    
+    // 清除定时器
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+    
+    // 强制终止所有Worker，不管roomThreadPreserve配置
+    const promises = Array.from(this.workers.entries()).map(async ([roomId, worker]) => {
+      try {
+        const room = this.rooms.find(r => r.id === roomId);
+        if (room) {
+          room.threadStatus = 'stopping';
+        }
+        
+        await worker.terminate();
+        this.workers.delete(roomId);
+        
+        if (room) {
+          room.threadStatus = 'idle';
+          room.threadId = undefined;
+          // 重置房间到初始状态
+          this.resetRoomToInitialState(room);
+        }
+        
+        console.log(`房间 ${roomId} 线程已强制终止`);
+      } catch (error) {
+        console.error(`强制终止房间 ${roomId} 线程失败:`, error);
+      }
+    });
+    
     await Promise.all(promises);
+    console.log('所有房间线程已关闭');
+  }
+
+  // 更新房间引用（用于服务器重置时保留线程的情况）
+  updateRooms(newRooms: Room[]) {
+    this.rooms = newRooms;
+    console.log('已更新RoomThreadManager中的房间引用');
   }
 } 

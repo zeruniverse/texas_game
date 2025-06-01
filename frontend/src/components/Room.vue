@@ -15,22 +15,22 @@
           Cash Out
         </el-button>
       </template>
-      <!-- 游戏进行时，参与游戏的玩家快捷操作（线上与线下翻牌前） -->
-      <template v-if="store.stage === 'playing' && isInGame">
+      <!-- 游戏进行时，需要玩家行动的快捷操作（不包含分池阶段） -->
+      <template v-if="store.stage === 'playing' && isInGame && isMyTurn">
+        <!-- 第一个按钮：延时 -->
         <el-button @click="extendTime"
-                   :disabled="!isMyTurn || !canExtendTime"
-                   :class="{ 'colored-border': isMyTurn && canExtendTime, 'disabled-border': !isMyTurn || !canExtendTime }">
+                   :class="{ 'colored-border': true }">
           延时
         </el-button>
-        <el-button @click="callAction"
-                   :disabled="!canCall"
-                   :class="{ 'colored-border': canCall, 'disabled-border': !canCall }">
-          Call {{ toCall }}
+        <!-- 第二个按钮：根据情况显示 Bet X/Call X/All-in -->
+        <el-button @click="handleSecondQuickButton"
+                   :class="{ 'colored-border': true }">
+          {{ secondQuickButtonText }}
         </el-button>
-        <el-button @click="checkAction"
-                   :disabled="!canCheck"
-                   :class="{ 'colored-border': canCheck, 'disabled-border': !canCheck }">
-          Check
+        <!-- 第三个按钮：根据情况显示 Check/Fold -->
+        <el-button @click="handleThirdQuickButton"
+                   :class="{ 'colored-border': true }">
+          {{ thirdQuickButtonText }}
         </el-button>
       </template>
       <!-- 线下分池阶段显示Take/TakeAll -->
@@ -90,7 +90,7 @@
           </template>
           <!-- 正常操作阶段 -->
           <template v-else-if="store.stage === 'playing' && isInGame">
-            <ActionBar style="position:relative; z-index:100;" />
+            <ActionBar />
           </template>
           <div class="control-buttons">
             <el-button size="small" @click="toggleAutoStart"
@@ -262,15 +262,7 @@ function toggleRoomLock() {
 const isMyTurn = computed(() => store.currentTurn === store.nickname);
 const toCall = computed(() => store.currentBet - (store.bets[store.nickname] || 0));
 const ownPlayer = computed(() => store.players.find((p: any) => p.id === store.nickname));
-const canCall = computed(() => isMyTurn.value && toCall.value > 0 && ownPlayer.value && ownPlayer.value.chips > toCall.value);
 const canCheck = computed(() => isMyTurn.value && toCall.value === 0);
-const canExtendTime = computed(() => {
-  // 游戏未开始时不能延时
-  if (store.stage !== 'playing') return false;
-  // 不在游戏中的玩家不能延时
-  if (!isInGame.value) return false;
-  return true;
-});
 const canStartGame = computed(() => {
   const playersWithChips = store.players.filter(p => p.chips > 0 && p.inGame);
   return playersWithChips.length >= 2;
@@ -282,11 +274,81 @@ const isInGame = computed(() => {
 function extendTime() {
   store.extendTime();
 }
-function callAction() {
-  if (store.socket && store.currentRoom) store.socket.emit('action', { roomId, action: 'call' });
+
+// 新的智能快捷按钮逻辑
+// 第二个快捷按钮的文本
+const secondQuickButtonText = computed(() => {
+  if (!isMyTurn.value || !isInGame.value) return '';
+  
+  if (canCheck.value) {
+    // 玩家可以check的情况，显示 Bet X
+    const betAmount = Math.floor(store.pot / 2);
+    // 检查筹码是否足够下注这个金额
+    if (betAmount >= ownPlayer.value?.chips) {
+      return 'All-in';
+    }
+    return `Bet ${betAmount}`;
+  } else {
+    // 玩家不能check的情况，显示 Call X
+    const callAmount = toCall.value;
+    if (callAmount >= ownPlayer.value?.chips) {
+      return 'All-in';
+    }
+    return `Call ${callAmount}`;
+  }
+});
+
+// 第三个快捷按钮的文本
+const thirdQuickButtonText = computed(() => {
+  if (!isMyTurn.value || !isInGame.value) return '';
+  
+  if (canCheck.value) {
+    return 'Check';
+  } else {
+    return 'Fold';
+  }
+});
+
+// 处理第二个快捷按钮点击
+function handleSecondQuickButton() {
+  if (!store.socket || !store.currentRoom || !isMyTurn.value || !isInGame.value) return;
+  
+  if (canCheck.value) {
+    // 玩家可以check的情况，执行 Bet X 或 All-in
+    const betAmount = Math.floor(store.pot / 2);
+    if (betAmount >= ownPlayer.value?.chips) {
+      // All-in
+      store.socket.emit('action', { roomId: store.currentRoom, action: 'allin' });
+    } else {
+      // Bet X - 本轮总下注为当前已下注 + betAmount
+      const currentBet = store.bets[store.nickname] || 0;
+      const totalBetAmount = currentBet + betAmount;
+      store.socket.emit('action', { roomId: store.currentRoom, action: 'raise', amount: totalBetAmount });
+    }
+  } else {
+    // 玩家不能check的情况，执行 Call X 或 All-in
+    const callAmount = toCall.value;
+    if (callAmount >= ownPlayer.value?.chips) {
+      // All-in
+      store.socket.emit('action', { roomId: store.currentRoom, action: 'allin' });
+    } else {
+      // Call
+      store.socket.emit('action', { roomId: store.currentRoom, action: 'call' });
+    }
+  }
 }
-function checkAction() {
-  if (store.socket && store.currentRoom) store.socket.emit('action', { roomId, action: 'check' });
+
+// 处理第三个快捷按钮点击
+function handleThirdQuickButton() {
+  if (!store.socket || !store.currentRoom || !isMyTurn.value || !isInGame.value) return;
+  
+  if (canCheck.value) {
+    // Check
+    store.socket.emit('action', { roomId: store.currentRoom, action: 'check' });
+  } else {
+    // Fold
+    store.socket.emit('action', { roomId: store.currentRoom, action: 'fold' });
+  }
 }
 
 // 线下 take 操作

@@ -591,7 +591,7 @@ function handleStartGame(task: GameTask) {
   const bbPlayer = participatingPlayers[bbIndex];
   
   // 获取盲注大小
-  const blinds = room.gameState?.blinds || { sb: 10, bb: 20 };
+  const blinds = room.gameState!.blinds;
   
   // 检查小盲注和大盲注玩家的筹码
   if (sbPlayer.chips < blinds.sb) {
@@ -1145,10 +1145,9 @@ function handleExtendTime(task: GameTask) {
     return;
   }
   
-  // 检查是否轮到该玩家行动
-  const gs = room.gameState;
-  if (room.players[gs.currentTurn].id !== playerId) {
-    sendResponse(task.id, false, null, '不是你的回合，无法延时');
+  // 检查发起延时的玩家是否在游戏中
+  if (!room.participants.includes(playerId)) {
+    sendResponse(task.id, false, null, '你不在游戏中，无法延时');
     return;
   }
   
@@ -1158,8 +1157,15 @@ function handleExtendTime(task: GameTask) {
     return;
   }
   
+  const gs = room.gameState;
+  const currentPlayer = room.players[gs.currentTurn];
+  
   if (player) {
-    emitToRoom('chat_broadcast', { message: `[玩家${player.nickname} 延时当前行动30s]` });
+    if (currentPlayer.id === playerId) {
+      emitToRoom('chat_broadcast', { message: `[玩家${player.nickname} 延时当前行动30s]` });
+    } else {
+      emitToRoom('chat_broadcast', { message: `[玩家${player.nickname} 为${currentPlayer.nickname}延时30s]` });
+    }
   }
   
   // 重置超时定时器

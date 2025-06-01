@@ -28,12 +28,28 @@ export function roomController(io: Server) {
         socket.disconnect(true);
       }
       
-      // 4. 关闭所有房间线程
+      // 4. 处理现有的房间线程
       if (threadManager) {
-        await threadManager.shutdown();
+        if (config.roomThreadPreserve) {
+          // 如果配置为保留线程，则重置所有房间状态但保留线程
+          for (const room of rooms) {
+            if (room.threadStatus === 'running') {
+              try {
+                await threadManager.stopRoomThread(room.id); // 这会重置房间状态但保留线程
+                console.log(`房间 ${room.id} 已重置状态但保留线程`);
+              } catch (error) {
+                console.error(`重置房间 ${room.id} 状态失败:`, error);
+              }
+            }
+          }
+        } else {
+          // 如果不保留线程，则完全关闭所有线程
+          await threadManager.shutdown();
+        }
       }
       
-      // 5. 清空房间数组
+      // 5. 重置房间数据（保持房间ID和线程状态）
+      const existingRooms = [...rooms]; // 保存现有房间引用
       rooms.length = 0;
       
       // 6. 重新创建房间（使用当前配置）
@@ -41,8 +57,11 @@ export function roomController(io: Server) {
       
       // 创建线下房间
       for (let i = 1; i <= config.rooms.offline.count; i++) {
+        const roomId = `room${roomCounter}`;
+        const existingRoom = existingRooms.find(r => r.id === roomId);
+        
         rooms.push({
-          id: `room${roomCounter}`,
+          id: roomId,
           name: `${config.rooms.offline.namePrefix}${i}`,
           maxPlayers: config.gameSettings.maxPlayers,
           players: [],
@@ -50,7 +69,10 @@ export function roomController(io: Server) {
           autoStart: false,
           locked: false,
           lastActiveTime: Date.now(),
-          threadStatus: 'idle',
+          // 如果保留线程且房间已存在，保持线程状态，否则设为idle
+          threadStatus: (config.roomThreadPreserve && existingRoom?.threadStatus === 'running') ? 'running' : 'idle',
+          threadId: (config.roomThreadPreserve && existingRoom?.threadId) ? existingRoom.threadId : undefined,
+          participants: [],
           gameState: { 
             deck: [], 
             communityCards: [], 
@@ -75,8 +97,11 @@ export function roomController(io: Server) {
       
       // 创建线上房间
       for (let i = 1; i <= config.rooms.online.count; i++) {
+        const roomId = `room${roomCounter}`;
+        const existingRoom = existingRooms.find(r => r.id === roomId);
+        
         rooms.push({
-          id: `room${roomCounter}`,
+          id: roomId,
           name: `${config.rooms.online.namePrefix}${i}`,
           maxPlayers: config.gameSettings.maxPlayers,
           players: [],
@@ -84,7 +109,10 @@ export function roomController(io: Server) {
           autoStart: false,
           locked: false,
           lastActiveTime: Date.now(),
-          threadStatus: 'idle',
+          // 如果保留线程且房间已存在，保持线程状态，否则设为idle
+          threadStatus: (config.roomThreadPreserve && existingRoom?.threadStatus === 'running') ? 'running' : 'idle',
+          threadId: (config.roomThreadPreserve && existingRoom?.threadId) ? existingRoom.threadId : undefined,
+          participants: [],
           gameState: { 
             deck: [], 
             communityCards: [], 
@@ -107,10 +135,18 @@ export function roomController(io: Server) {
         roomCounter++;
       }
       
-      // 7. 重新初始化线程管理器
-      threadManager = new RoomThreadManager(rooms, handleThreadMessage);
+      // 7. 重新初始化线程管理器（只有在不保留线程时才完全重新创建）
+      if (!config.roomThreadPreserve) {
+        threadManager = new RoomThreadManager(rooms, handleThreadMessage);
+      } else {
+        // 如果保留线程，只需要更新房间引用
+        threadManager.updateRooms(rooms);
+      }
       
       console.log(`服务器重置完成，重新创建了 ${config.rooms.offline.count} 个线下房间和 ${config.rooms.online.count} 个线上房间`);
+      if (config.roomThreadPreserve) {
+        console.log('已保留现有的worker线程');
+      }
       
       return true;
     } catch (error) {
