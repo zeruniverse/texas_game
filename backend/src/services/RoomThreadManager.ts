@@ -153,6 +153,17 @@ export class RoomThreadManager {
         // 重置房间到初始状态，但保留线程运行
         this.resetRoomToInitialState(room);
         room.threadStatus = 'running';
+        
+        // 通知 Worker 线程也重置其内部的房间状态
+        try {
+          await this.sendTask(roomId, {
+            type: 'reset_room',
+            roomId,
+            data: { roomState: room }
+          });
+        } catch (error) {
+          console.error(`通知房间 ${roomId} 重置失败:`, error);
+        }
       }
       return true;
     }

@@ -460,6 +460,9 @@ parentPort.on('message', (task: GameTask) => {
       case 'player_offline':
         handlePlayerOffline(task);
         break;
+      case 'reset_room':
+        handleResetRoom(task);
+        break;
       default:
         sendResponse(task.id, false, null, `未知任务类型: ${task.type}`);
     }
@@ -1346,4 +1349,17 @@ function splitPotSidePots(
     prev = amt;
   }
   return sidePots;
+}
+
+// 处理房间重置
+function handleResetRoom(task: GameTask) {
+  const { roomState } = task.data;
+  
+  // 清除所有定时器
+  clearActionTimer();
+  
+  // 重置 Worker 线程中的房间状态
+  room = roomState;
+  
+  sendResponse(task.id, true);
 } 
