@@ -16,7 +16,7 @@ cd frontend
 npm install
 npm run 
 
-VITE_SOCKET_URL=your_server_url npm build
+VITE_SOCKET_URL=your_server_url npm run build
 ```
 
 打开浏览器访问 `http://localhost:5173`。
