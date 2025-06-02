@@ -377,12 +377,41 @@ function handleGameOver() {
   
   // 自动开始下一局逻辑
   if (room.autoStart) {
-    const nextParticipants = room.players.filter(p => p.chips > 0 && p.inGame).map(p => p.id);
-    if (nextParticipants.length >= 2) {
-      room.participants = nextParticipants;
-      emitToRoom('chat_broadcast', { message: '自动开始新一局游戏' });
-      startGame();
-    }
+    // 延迟到下一个事件循环执行自动开始逻辑，避免当前栈中冲突
+    setTimeout(() => {
+      const participants = room.players.filter(p => p.chips > 0 && p.inGame).map(p => p.id);
+      if (participants.length >= 2) {
+        // 提前检查盲注，避免前端进入错误状态
+        const participatingPlayers = room.players.filter(p => participants.includes(p.id));
+        const dealerIndex = ((room.gameState?.dealerIndex ?? -1) + 1) % participatingPlayers.length;
+        const sbIndex = (dealerIndex + 1) % participatingPlayers.length;
+        const bbIndex = (sbIndex + 1) % participatingPlayers.length;
+        const sbPlayer = participatingPlayers[sbIndex];
+        const bbPlayer = participatingPlayers[bbIndex];
+        
+        // 获取盲注大小
+        const blinds = room.gameState!.blinds;
+        
+        // 检查小盲注和大盲注玩家的筹码
+        if (sbPlayer.chips >= blinds.sb && bbPlayer.chips >= blinds.bb) {
+          // 所有检查都通过，才设置participants并开始游戏
+          room.participants = participants;
+          room.lastActiveTime = Date.now();
+          
+          emitToRoom('chat_broadcast', { message: '自动开始新一局游戏' });
+          // 立即启动游戏（已经在下一个事件循环中了）
+          startGame();
+        } else {
+          // 盲注检查失败，广播提示消息
+          if (sbPlayer.chips < blinds.sb) {
+            emitToRoom('chat_broadcast', { message: `${sbPlayer.nickname} 筹码不足以下小盲注，自动开始失败` });
+          }
+          if (bbPlayer.chips < blinds.bb) {
+            emitToRoom('chat_broadcast', { message: `${bbPlayer.nickname} 筹码不足以下大盲注，自动开始失败` });
+          }
+        }
+      }
+    }, 0);
   }
 }
 
@@ -396,7 +425,7 @@ function checkAndRemoveOfflinePlayers() {
     if (player.chips > 0 && offlineTime > 15 * 60 * 1000) {
       emitToRoom('chat_broadcast', { message: `${player.nickname} 因长时间离线被自动 cash out 并踢出房间` });
       toRemove.push(player.id);
-    } else if (player.chips === 0 && offlineTime > 10 * 1000) {
+    } else if (player.chips === 0 && offlineTime > 3 * 60 * 1000) {
       emitToRoom('chat_broadcast', { message: `${player.nickname} 因长时间离线被踢出房间` });
       toRemove.push(player.id);
     }
@@ -584,7 +613,7 @@ function handleStartGame(task: GameTask) {
   
   // 提前检查盲注，避免前端进入错误状态
   const participatingPlayers = room.players.filter(p => participants.includes(p.id));
-  const dealerIndex = (room.gameState?.dealerIndex ?? -1 + 1) % participatingPlayers.length;
+  const dealerIndex = ((room.gameState?.dealerIndex ?? -1) + 1) % participatingPlayers.length;
   const sbIndex = (dealerIndex + 1) % participatingPlayers.length;
   const bbIndex = (sbIndex + 1) % participatingPlayers.length;
   const sbPlayer = participatingPlayers[sbIndex];
@@ -697,8 +726,10 @@ function handlePlayerAction(task: GameTask) {
     gs.acted.push(playerId);
   }
   
-  // 检查回合是否结束
-  checkRoundEnd();
+  // 检查回合是否结束（只有当游戏仍有参与者时）
+  if (room.participants && room.participants.length > 0) {
+    checkRoundEnd();
+  }
   
   sendResponse(task.id, true);
 }
