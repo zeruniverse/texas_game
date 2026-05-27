@@ -742,10 +742,17 @@ function handlePlayerAction(task: GameTask) {
       return;
   }
 
-  // 添加到已行动列表
-  if (!gs.acted.includes(playerId)) {
-    gs.acted.push(playerId);
-  }
+  // 修复：移除 handlePlayerAction 末尾的 acted 管理代码。
+  // 所有 action handler（handleCheck/handleCall/handleRaise/handleAllIn/handleFold）
+  // 内部已经自行处理了 acted 列表的更新。在此额外添加 playerId 会导致：
+  // 若 action handler 调用了 continueToNextPlayer() -> nextRound() 进入新轮次，
+  // nextRound() 已将 gs.acted 重置为 []，而此处在其之后执行，会把 playerId
+  // 错误地写入新轮次的 acted，导致该玩家在新轮次被跳过行动。
+  //
+  // 旧代码：
+  // if (!gs.acted.includes(playerId)) {
+  //   gs.acted.push(playerId);
+  // }
 
   // 修复：移除末尾多余的 checkRoundEnd()。
   // 所有 action handler（fold/check/call/raise/allin）内部已经通过
