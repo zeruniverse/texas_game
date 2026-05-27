@@ -30,7 +30,7 @@ export function evaluateHand(cards: string[]): number {
     const suits = cards5.map(c=>c.suit);
     const counts: Record<number, number> = {};
     ranks.forEach(r=>counts[r]=(counts[r]||0)+1);
-    const uniqueRanks = Object.keys(counts).map(x=>parseInt(x)).sort((a,b)=>b-a);
+    const uniqueRanks = Object.keys(counts).map(x=>parseInt(x)).sort((a,b)=>b>a?1:-1);
     const isFlush = suits.every(s=>s===suits[0]);
     // straight 检测
     let isStraight = false;
@@ -42,8 +42,8 @@ export function evaluateHand(cards: string[]): number {
         highStraight = uniq[i+4];
       }
     }
-    // A-2-3-4-5
-    if (!isStraight && uniq.slice(-4).toString()=== '2,3,4,5' && uniq.includes(14)) {
+    // A-2-3-4-5 (wheel) 检测 - 修复：检查前4个元素是否为2,3,4,5
+    if (!isStraight && uniq.length >= 5 && uniq[0] === 2 && uniq[1] === 3 && uniq[2] === 4 && uniq[3] === 5 && uniq.includes(14)) {
       isStraight = true;
       highStraight = 5;
     }
@@ -55,7 +55,8 @@ export function evaluateHand(cards: string[]): number {
     if (isStraight && isFlush) score = 8e12 + highStraight;
     else if (c1===4) {
       const four = uniqueRanks.find(r=>counts[r]===4)!;
-      score = 7e12 + four*1e8 + uniqueRanks.find(r=>counts[r]!==4)!;
+      const kicker = uniqueRanks.find(r=>counts[r]!==4)!;
+      score = 7e12 + four*1e8 + kicker;
     }
     else if (c1===3 && c2===2) {
       const three = uniqueRanks.find(r=>counts[r]===3)!;
@@ -66,17 +67,17 @@ export function evaluateHand(cards: string[]): number {
     else if (isStraight) score = 4e12 + highStraight;
     else if (c1===3) {
       const three = uniqueRanks.find(r=>counts[r]===3)!;
-      const kickers = uniqueRanks.filter(r=>counts[r]===1).slice(0,2);
+      const kickers = uniqueRanks.filter(r=>counts[r]===1).sort((a,b)=>b-a).slice(0,2);
       score = 3e12 + three*1e8 + kickers[0]*1e6 + kickers[1]*1e4;
     }
     else if (c1===2 && c2===2) {
-      const pairs = uniqueRanks.filter(r=>counts[r]===2).slice(0,2);
+      const pairs = uniqueRanks.filter(r=>counts[r]===2).sort((a,b)=>b-a).slice(0,2);
       const kicker = uniqueRanks.find(r=>counts[r]===1)!;
       score = 2e12 + pairs[0]*1e8 + pairs[1]*1e6 + kicker*1e4;
     }
     else if (c1===2) {
       const pair = uniqueRanks.find(r=>counts[r]===2)!;
-      const kickers = uniqueRanks.filter(r=>counts[r]===1).slice(0,3);
+      const kickers = uniqueRanks.filter(r=>counts[r]===1).sort((a,b)=>b>a?1:-1).slice(0,3);
       score = 1e12 + pair*1e8 + kickers[0]*1e6 + kickers[1]*1e4 + kickers[2]*1e2;
     }
     else {

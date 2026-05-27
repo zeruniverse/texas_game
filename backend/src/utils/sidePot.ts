@@ -13,6 +13,11 @@ export function splitPotSidePots(
   totalBets: Record<string, number>,
   activeIds: string[]
 ): SidePot[] {
+  // 安全检查：如果没有活跃玩家，返回空数组
+  if (!activeIds || activeIds.length === 0) {
+    return [];
+  }
+
   // 获取所有投注额条目
   const entries = Object.entries(totalBets).map(([pid, amt]) => ({ pid, amt }));
   // 按投注额从小到大排序并去重
@@ -32,9 +37,13 @@ export function splitPotSidePots(
     }
     // 当前侧池金额 = (amount - prevAmount) * 贡献玩家数量
     const potAmount = (amount - prevAmount) * eligibleAll.length;
-    sidePots.push({ amount: potAmount, eligibleIds: eligibleAll.filter(pid => activeIds.includes(pid)) });
+    const eligibleActive = eligibleAll.filter(pid => activeIds.includes(pid));
+    // 安全检查：只有当有资格活跃玩家时才添加侧池
+    if (eligibleActive.length > 0 && potAmount > 0) {
+      sidePots.push({ amount: potAmount, eligibleIds: eligibleActive });
+    }
     prevAmount = amount;
   }
 
   return sidePots;
-} 
+}
