@@ -796,6 +796,10 @@ function handleFold(playerId: string) {
 function handleCheck(playerId: string) {
   const player = room.players.find(p => p.id === playerId);
   if (!player) return;
+  const gs = room.gameState!;
+  // 修复：在 continueToNextPlayer 前确保 playerId 已加入 acted，
+  // 否则 allActed 检查会看不到当前玩家，导致前一个玩家获得额外行动机会
+  if (!gs.acted.includes(playerId)) gs.acted.push(playerId);
   emitToRoom('chat_broadcast', { message: `${player.nickname} 看牌` });
   continueToNextPlayer();
 }
@@ -817,6 +821,9 @@ function handleCall(playerId: string, callAmount: number) {
   } else {
     emitToRoom('chat_broadcast', { message: `${player.nickname} 跟注 ${actualCall}` });
   }
+
+  // 修复：在 continueToNextPlayer 前确保 playerId 已加入 acted
+  if (!gs.acted.includes(playerId)) gs.acted.push(playerId);
 
   emitToRoom('room_update', room);
   continueToNextPlayer();
@@ -857,6 +864,8 @@ function handleAllIn(playerId: string) {
   if (!player) return;
 
   if (player.chips === 0) {
+    // 修复：在 continueToNextPlayer 前确保 playerId 已加入 acted
+    if (!gs.acted.includes(playerId)) gs.acted.push(playerId);
     emitToRoom('chat_broadcast', { message: `${player.nickname} 已经全下` });
     continueToNextPlayer();
     return;
@@ -873,6 +882,9 @@ function handleAllIn(playerId: string) {
   if (allInAmount > gs.currentBet) {
     gs.currentBet = allInAmount;
     gs.acted = [playerId];
+  } else {
+    // 修复：all-in 未超过当前最高注时，确保 playerId 已加入 acted
+    if (!gs.acted.includes(playerId)) gs.acted.push(playerId);
   }
 
   emitToRoom('chat_broadcast', { message: `${player.nickname} 全下 ${allInAmount}` });
